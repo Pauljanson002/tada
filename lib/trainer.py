@@ -59,7 +59,7 @@ class Trainer(object):
         self.local_rank = local_rank
         self.world_size = world_size
 
-        self.workspace = os.path.join(opt.workspace, self.name, self.text)
+        self.workspace = os.path.join(opt.workspace, self.name, self.text,self.action)
         self.ema_decay = ema_decay
         self.fp16 = fp16
         self.best_mode = best_mode

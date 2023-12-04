@@ -1,0 +1,11 @@
+--2023-11-27 09:59:29--  https://download.is.tue.mpg.de/download.php?domain=tada
+Resolving download.is.tue.mpg.de (download.is.tue.mpg.de)... 192.124.27.139
+Connecting to download.is.tue.mpg.de (download.is.tue.mpg.de)|192.124.27.139|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 49 [text/html]
+Saving to: ‘download.php?domain=tada’
+
+download.php?domain=tada                                           0%[                                                                                                                                                        ]       0  --.-KB/s               download.php?domain=tada                                         100%[=======================================================================================================================================================>]      49  --.-KB/s    in 0s      
+
+2023-11-27 09:59:30 (6.00 MB/s) - ‘download.php?domain=tada’ saved [49/49]
+

@@ -2,7 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.pyc
+**.pyc
 # C extensions
 *.so
 
@@ -166,4 +167,3 @@ data
 *.zip
 smplx/transfer_data
 web
-*.pyc

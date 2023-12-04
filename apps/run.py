@@ -30,8 +30,8 @@ if __name__ == '__main__':
     # cfg.training.merge_from_list(['workspace', args.workspace])
     cfg.freeze()
     # save config to workspace
-    os.makedirs(os.path.join(cfg.training.workspace, cfg.name, cfg.text), exist_ok=True)
-    with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,"config.yaml"), 'w') as f:
+    os.makedirs(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action), exist_ok=True)
+    with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action,"config.yaml"), 'w') as f:
         f.write(cfg.dump())
     seed_everything(cfg.seed)
 
