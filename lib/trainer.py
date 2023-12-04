@@ -421,7 +421,6 @@ class Trainer(object):
 
         for epoch in range(self.epoch + 1, max_epochs + 1):
             self.epoch = epoch
-
             with torch.no_grad():
                 #! Here they select the full body or face to train for this epoch
                 if random.random() < self.opt.train_face_ratio:
@@ -444,6 +443,7 @@ class Trainer(object):
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)
                 self.save_checkpoint(full=False, best=True)
+                
 
         end_t = time.time()
 

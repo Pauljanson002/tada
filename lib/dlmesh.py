@@ -117,9 +117,10 @@ class DLMesh(nn.Module):
                 from .mlptexture import MLPTexture3D
                 self.mlp_texture = MLPTexture3D()
             else:
-                res = self.opt.albedo_res
-                albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
-                self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
+                pass
+        res = self.opt.albedo_res
+        albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
+        self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
 
         # Geometry parameters
         if not self.opt.lock_geo:
@@ -139,7 +140,8 @@ class DLMesh(nn.Module):
             self.rich_params = torch.as_tensor(rich_data, dtype=torch.float32, device=self.device)
             if not self.opt.lock_expression:
                 self.expression = nn.Parameter(self.expression)
-            self.jaw_pose = nn.Parameter(self.jaw_pose)
+            # Jaw pose is not optimized
+            # self.jaw_pose = nn.Parameter(self.jaw_pose)
         if not self.opt.lock_pose:
             self.body_pose = nn.Parameter(self.body_pose)
 
@@ -248,7 +250,8 @@ class DLMesh(nn.Module):
                     {'params': self.geo_net.parameters(), 'lr': lr},
                 ])
             else:
-                params.append({'params': self.v_offsets, 'lr': 0.0001})
+                if False:
+                    params.append({'params': self.v_offsets, 'lr': 0.0001})
 
             if not self.lock_beta:
                 params.append({'params': self.betas, 'lr': 0.1})
@@ -308,8 +311,8 @@ class DLMesh(nn.Module):
             mesh = Mesh(v_posed_dense, self.faces_list[-1].int(), vt=self.vt, ft=self.ft)
             mesh.auto_normal()
 
-            if not self.opt.lock_tex and not self.opt.tex_mlp:
-                mesh.set_albedo(self.raw_albedo)
+            # if not self.opt.lock_tex and not self.opt.tex_mlp:
+            mesh.set_albedo(self.raw_albedo)
 
         else:
             mesh = Mesh(base=self.mesh)

@@ -166,3 +166,4 @@ data
 *.zip
 smplx/transfer_data
 web
+*.pyc
