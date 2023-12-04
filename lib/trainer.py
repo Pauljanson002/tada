@@ -23,11 +23,11 @@ from lib.dpt import DepthNormalEstimation
 class Trainer(object):
     def __init__(self,
                  name,  # name of this experiment
-                 text, negative, dir_text,
+                 text, action , negative, dir_text,
                  opt,  # extra conf
                  model,  # network
                  guidance,  # guidance network
-                 criterion=None,  # loss function, if None, assume inline implementation in train_step
+                 criterion=None,  # loss function, if None, assume inline implementation in step
                  optimizer=None,  # optimizer
                  ema_decay=None,  # if use EMA, set the decay
                  lr_scheduler=None,  # scheduler
@@ -50,6 +50,7 @@ class Trainer(object):
         self.default_view_data = None
         self.name = name
         self.text = text
+        self.action = action
         self.negative = negative
         self.dir_text = dir_text
         self.opt = opt
@@ -90,10 +91,10 @@ class Trainer(object):
                 p.requires_grad = False
             self.prepare_text_embeddings()
 
-        # try out torch 2.0
-        if torch.__version__[0] == '2':
-            self.model = torch.compile(self.model)
-            self.guidance = torch.compile(self.guidance)
+        # # try out torch 2.0
+        # if torch.__version__[0] == '2':
+        #     self.model = torch.compile(self.model)
+        #     self.guidance = torch.compile(self.guidance)
 
         if isinstance(criterion, nn.Module):
             criterion.to(self.device)
@@ -173,16 +174,28 @@ class Trainer(object):
             self.log(f"[WARN] text prompt is not provided.")
             return
 
-        self.text_embeds = {
-            'uncond': self.guidance.get_text_embeds([self.negative]),
-            'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text}, full-body"]),
-        }
+        if self.action is not None:
+            self.text_embeds = {
+                'uncond': self.guidance.get_text_embeds([self.negative]),
+                'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text},performing the action {self.action}, full-body"]),
+            }
+        else:
+            self.text_embeds = {
+                'uncond': self.guidance.get_text_embeds([self.negative]),
+                'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text}, full-body"]),
+            }
 
         if self.opt.train_face_ratio < 1:
-            self.text_embeds['body'] = {
-                d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text}, full-body"])
-                for d in ['front', 'side', 'back', "overhead"]
-            }
+            if self.action is not None:
+                self.text_embeds['body'] = {
+                    d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text},performing the action {self.action}, full-body"])
+                    for d in ['front', 'side', 'back', "overhead"]
+                }
+            else:
+                self.text_embeds['body'] = {
+                    d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text}, full-body"])
+                    for d in ['front', 'side', 'back', "overhead"]
+                }
 
         if self.opt.train_face_ratio > 0:
             id_text = self.text.split("wearing")[0]
@@ -410,6 +423,7 @@ class Trainer(object):
             self.epoch = epoch
 
             with torch.no_grad():
+                #! Here they select the full body or face to train for this epoch
                 if random.random() < self.opt.train_face_ratio:
                     train_loader.dataset.full_body = False
                     face_center, face_scale = self.model.get_mesh_center_scale("face")

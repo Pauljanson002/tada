@@ -16,6 +16,7 @@ if __name__ == '__main__':
     # parser.add_argument('--mesh', type=str, required=True, help="mesh template, must be obj format")
     parser.add_argument('--text', default=None, help="text prompt")
     parser.add_argument('--negative', default='', help="negative text prompt")
+    parser.add_argument("--action", default="sitting", help="action")
     args = parser.parse_args()
 
     cfg = load_config(args.config, 'configs/default.yaml')
@@ -23,11 +24,14 @@ if __name__ == '__main__':
     cfg.merge_from_list([
         'text', args.text,
         'negative', args.negative,
+        'action', args.action,
     ])
     # cfg.model.merge_from_list(['mesh', args.mesh])
     # cfg.training.merge_from_list(['workspace', args.workspace])
     cfg.freeze()
-
+    # save config to workspace
+    with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,"config.yaml"), 'w') as f:
+        f.write(cfg.dump())
     seed_everything(cfg.seed)
 
     def build_dataloader(phase):
@@ -71,6 +75,7 @@ if __name__ == '__main__':
     if cfg.test:
         trainer = Trainer(cfg.name,
                           text=cfg.text,
+                          action=cfg.action,
                           negative=cfg.negative,
                           dir_text=cfg.data.dir_text,
                           opt=cfg.training,
@@ -97,6 +102,7 @@ if __name__ == '__main__':
             guidance = configure_guidance()
         trainer = Trainer(cfg.name,
                           text=cfg.text,
+                          action=cfg.action,
                           negative=cfg.negative,
                           dir_text=cfg.data.dir_text,
                           opt=cfg.training,

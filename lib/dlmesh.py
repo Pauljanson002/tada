@@ -139,11 +139,9 @@ class DLMesh(nn.Module):
             self.rich_params = torch.as_tensor(rich_data, dtype=torch.float32, device=self.device)
             if not self.opt.lock_expression:
                 self.expression = nn.Parameter(self.expression)
-
-            if not self.opt.lock_pose:
-                self.body_pose = nn.Parameter(self.body_pose)
-
             self.jaw_pose = nn.Parameter(self.jaw_pose)
+        if not self.opt.lock_pose:
+            self.body_pose = nn.Parameter(self.body_pose)
 
         # Create an FaceLandmarker object.
         base_options = python.BaseOptions(model_asset_path='data/mediapipe/face_landmarker.task')
@@ -232,12 +230,11 @@ class DLMesh(nn.Module):
 
     def get_params(self, lr):
         params = []
-
-        if not self.opt.skip_bg:
+        if not self.opt.skip_bg: # default skip_bg = True
             params.append({'params': self.bg_net.parameters(), 'lr': lr})
 
-        if not self.opt.lock_tex:
-            if self.opt.tex_mlp:
+        if not self.opt.lock_tex: # default lock_tex = False
+            if self.opt.tex_mlp: # default tex_mlp = False
                 params.extend([
                     {'params': self.mlp_texture.parameters(), 'lr': lr * 10},
                 ])
@@ -259,9 +256,10 @@ class DLMesh(nn.Module):
             if not self.opt.lock_expression:
                 params.append({'params': self.expression, 'lr': 0.05})
 
-            if not self.opt.lock_pose:
-                params.append({'params': self.body_pose, 'lr': 0.05})
-                params.append({'params': self.jaw_pose, 'lr': 0.05})
+        if not self.opt.lock_pose:
+            params.append({'params': self.body_pose, 'lr': 0.05})
+            #!!!! Not training Jaw pose for now 
+            # params.append({'params': self.jaw_pose, 'lr': 0.05})
 
         return params
 

@@ -1,0 +1,1 @@
+python -m apps.run --config configs/tada_wo_dpt.yaml --text "a person" --action "running" 

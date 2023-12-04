@@ -20,7 +20,7 @@ training:
   ckpt: latest
   anneal_tex_reso: False
   optim: 'adan'
-  train_face_ratio: 0.0
+  train_face_ratio: 0.3
   eval_interval: 1
   workspace: "/data/tada"
   perpneg: False
@@ -65,11 +65,11 @@ model:
   tex_mlp: False
   geo_mlp: False
   skip_bg: True
-  lock_tex: True
-  lock_geo: True
-  lock_beta: True
-  lock_pose: False
-  lock_expression: True
+  lock_tex: False
+  lock_geo: False
+  lock_beta: False
+  lock_pose: True
+  lock_expression: False
   albedo_res: 1024
   init_empty_tex: True
   replace_hands_eyes: True
