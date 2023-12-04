@@ -117,10 +117,9 @@ class DLMesh(nn.Module):
                 from .mlptexture import MLPTexture3D
                 self.mlp_texture = MLPTexture3D()
             else:
-                pass
-        res = self.opt.albedo_res
-        albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
-        self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
+                res = self.opt.albedo_res
+                albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
+                self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
 
         # Geometry parameters
         if not self.opt.lock_geo:

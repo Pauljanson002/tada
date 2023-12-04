@@ -3,7 +3,7 @@ stage: geo_tex
 test: False
 model:
   lock_geo: False
-  lock_tex: True
+  lock_tex: False
   skip_bg: True
   init_empty_tex: True
   albedo_res: 2048
