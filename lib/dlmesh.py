@@ -19,7 +19,7 @@ from lib.common.renderer import Renderer
 from lib.common.remesh import smplx_remesh_mask, subdivide, subdivide_inorder
 from lib.common.lbs import warp_points
 from lib.common.visual import draw_landmarks
-
+import torchvision
 
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers, bias=True):
@@ -120,6 +120,13 @@ class DLMesh(nn.Module):
                 res = self.opt.albedo_res
                 albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
                 self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
+        else:
+            albedo_image = cv2.imread("data/mesh_albedo.png")
+            albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
+            albedo_image = albedo_image.astype(np.float32) / 255.0
+            self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
+            
+
 
         # Geometry parameters
         if not self.opt.lock_geo:

@@ -18,7 +18,7 @@ training:
   workspace: "./outputs"
   use_dpt: False
 data:
-  phi_range: [0, 0]
-  theta_range: [60, 60]
+  phi_range: [-180, 180]
+  theta_range: [60, 90]
   head_phi_range: [-30, 30]
   head_theta_range: [75, 85]

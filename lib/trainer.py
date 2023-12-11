@@ -15,11 +15,12 @@ import torch.nn.functional as F
 import torch.distributed as dist
 from rich.console import Console
 from torch_ema import ExponentialMovingAverage
+import wandb
 
 from lib.common.utils import *
 from lib.common.visual import draw_landmarks, draw_mediapipe_landmarks
 from lib.dpt import DepthNormalEstimation
-
+import wandb
 class Trainer(object):
     def __init__(self,
                  name,  # name of this experiment
@@ -59,7 +60,7 @@ class Trainer(object):
         self.local_rank = local_rank
         self.world_size = world_size
 
-        self.workspace = os.path.join(opt.workspace, self.name, self.text)
+        self.workspace = os.path.join(opt.workspace, self.name, self.text, self.action)
         self.ema_decay = ema_decay
         self.fp16 = fp16
         self.best_mode = best_mode
@@ -169,6 +170,7 @@ class Trainer(object):
                 self.load_checkpoint(self.use_checkpoint)
 
     # calculate the text embeddings.
+    #Show : Text embeddings
     def prepare_text_embeddings(self):
         if self.text is None:
             self.log(f"[WARN] text prompt is not provided.")
@@ -177,7 +179,7 @@ class Trainer(object):
         if self.action is not None:
             self.text_embeds = {
                 'uncond': self.guidance.get_text_embeds([self.negative]),
-                'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text},performing the action {self.action}, full-body"]),
+                'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text} {self.action}, full-body"]),
             }
         else:
             self.text_embeds = {
@@ -188,7 +190,7 @@ class Trainer(object):
         if self.opt.train_face_ratio < 1:
             if self.action is not None:
                 self.text_embeds['body'] = {
-                    d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text},performing the action {self.action}, full-body"])
+                    d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text} {self.action}, full-body"])
                     for d in ['front', 'side', 'back', "overhead"]
                 }
             else:
@@ -253,6 +255,8 @@ class Trainer(object):
         image = out['image'].permute(0, 3, 1, 2)
         normal = out['normal'].permute(0, 3, 1, 2)
         alpha = out['alpha'].permute(0, 3, 1, 2)
+        
+        # Show losses
 
         out_annel = self.model(rays_o, rays_d, mvp, H, W, shading='albedo')
         image_annel = out_annel['image'].permute(0, 3, 1, 2)
@@ -526,6 +530,10 @@ class Trainer(object):
 
         for data in loader:
 
+            # if data["dirkey"][0] in ["side","back","overhead"]:
+            #     print(f"skip {data['dirkey'][0]}")
+            #     continue
+
             self.local_step += 1
             self.global_step += 1
 
@@ -539,6 +547,10 @@ class Trainer(object):
                 save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.png')
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 cv2.imwrite(save_path, pred)
+                wandb.log({
+                    "train-vis/images": wandb.Image(pred),
+                    "train-vis/step": self.global_step,
+                })
 
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
@@ -641,6 +653,10 @@ class Trainer(object):
         save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         cv2.imwrite(save_path, np.hstack(vis_frames))
+        wandb.log({
+            "validation/images": wandb.Image(np.hstack(vis_frames)),
+            "validation/step": self.epoch,
+        })
 
         average_loss = total_loss / self.local_step
         self.stats["valid_loss"].append(average_loss)

@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
-from .perpneg_utils import weighted_perpendicular_aggregator
+# from .perpneg_utils import weighted_perpendicular_aggregator
 
 
 class SpecifyGradient(torch.autograd.Function):
@@ -284,7 +284,6 @@ class StableDiffusion(nn.Module):
 if __name__ == '__main__':
     import argparse
     import matplotlib.pyplot as plt
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--prompt', type=str)
     parser.add_argument('--negative', default='bad anatomy', type=str)

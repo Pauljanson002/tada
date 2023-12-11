@@ -101,6 +101,10 @@ if __name__ == '__main__':
             guidance = configure_guidance()
         except:
             guidance = configure_guidance()
+
+        wandb.init(project="tada",name=cfg.name,config=vars(cfg),tags=["tada"],mode="online")
+
+
         trainer = Trainer(cfg.name,
                           text=cfg.text,
                           action=cfg.action,

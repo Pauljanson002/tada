@@ -65,10 +65,10 @@ model:
   tex_mlp: False
   geo_mlp: False
   skip_bg: True
-  lock_tex: True
-  lock_geo: True
-  lock_beta: True
-  lock_pose: False
+  lock_tex: False
+  lock_geo: False
+  lock_beta: False
+  lock_pose: True
   lock_expression: True
   albedo_res: 1024
   init_empty_tex: True
