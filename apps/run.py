@@ -29,6 +29,7 @@ if __name__ == '__main__':
     # cfg.model.merge_from_list(['mesh', args.mesh])
     # cfg.training.merge_from_list(['workspace', args.workspace])
     cfg.freeze()
+    print(cfg)
     # save config to workspace
     os.makedirs(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action), exist_ok=True)
     with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action,"config.yaml"), 'w') as f:
