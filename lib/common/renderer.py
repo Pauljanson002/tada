@@ -93,6 +93,12 @@ class Renderer(torch.nn.Module):
             alpha = utils.scale_img_nhwc(alpha, (h, w))
             normal = utils.scale_img_nhwc(normal, (h, w))
 
+        # Render cubmap as background
+        # enclose the mesh in a cube
+        # rasterize the cube
+        # render the cube
+
+
         return color, normal, alpha
 
     def get_mlp_texture(self, mesh, mlp_texture, rast, rast_db, res=2048):

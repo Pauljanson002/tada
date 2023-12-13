@@ -19,6 +19,7 @@ from lib.common.renderer import Renderer
 from lib.common.remesh import smplx_remesh_mask, subdivide, subdivide_inorder
 from lib.common.lbs import warp_points
 from lib.common.visual import draw_landmarks
+import nvdiffrast.torch as dr
 import torchvision
 
 class MLP(nn.Module):
@@ -28,7 +29,7 @@ class MLP(nn.Module):
         self.dim_out = dim_out
         self.dim_hidden = dim_hidden
         self.num_layers = num_layers
-
+        
         net = []
         for l in range(num_layers):
             net.append(nn.Linear(self.dim_in if l == 0 else self.dim_hidden,
@@ -54,7 +55,7 @@ class DLMesh(nn.Module):
         self.num_remeshing = 1
 
         self.renderer = Renderer()
-
+        self.glctx = dr.RasterizeCudaContext()
         self.device = torch.device("cuda")
         self.lock_beta = opt.lock_beta
 
@@ -125,7 +126,7 @@ class DLMesh(nn.Module):
             albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
             albedo_image = albedo_image.astype(np.float32) / 255.0
             self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
-            
+
 
 
         # Geometry parameters
@@ -382,13 +383,110 @@ class DLMesh(nn.Module):
             light_d = (rays_o[0] + torch.randn(3, device=rays_o.device, dtype=torch.float))
             light_d = safe_normalize(light_d)
 
+        if h == 512 or h == 800:
+
+        # [-1.0,  1.0, -1.0,],
+        # [-1.0, -1.0, -1.0,],
+        #  [1.0, -1.0, -1.0],
+        #  [1.0, -1.0, -1.0],
+        #  [1.0,  1.0, -1.0],
+        # [-1.0,  1.0, -1.0],
+
+        # -1.0f, -1.0f,  1.0f,
+        # -1.0f, -1.0f, -1.0f,
+        # -1.0f,  1.0f, -1.0f,
+        # -1.0f,  1.0f, -1.0f,
+        # -1.0f,  1.0f,  1.0f,
+        # -1.0f, -1.0f,  1.0f,
+
+        #  1.0f, -1.0f, -1.0f,
+        #  1.0f, -1.0f,  1.0f,
+        #  1.0f,  1.0f,  1.0f,
+        #  1.0f,  1.0f,  1.0f,
+        #  1.0f,  1.0f, -1.0f,
+        #  1.0f, -1.0f, -1.0f,
+
+        # -1.0f, -1.0f,  1.0f,
+        # -1.0f,  1.0f,  1.0f,
+        #  1.0f,  1.0f,  1.0f,
+        #  1.0f,  1.0f,  1.0f,
+        #  1.0f, -1.0f,  1.0f,
+        # -1.0f, -1.0f,  1.0f,
+
+        # -1.0f,  1.0f, -1.0f,
+        #  1.0f,  1.0f, -1.0f,
+        #  1.0f,  1.0f,  1.0f,
+        #  1.0f,  1.0f,  1.0f,
+        # -1.0f,  1.0f,  1.0f,
+        # -1.0f,  1.0f, -1.0f,
+
+        # -1.0f, -1.0f, -1.0f,
+        # -1.0f, -1.0f,  1.0f,
+        #  1.0f, -1.0f, -1.0f,
+        #  1.0f, -1.0f, -1.0f,
+        # -1.0f, -1.0f,  1.0f,
+        #  1.0f, -1.0f,  1.0f
+            pos = torch.tensor([[-1., -1., -1.],
+            [ 1., -1., -1.],
+            [ 1.,  1., -1.],
+            [-1.,  1., -1.],
+            [-1., -1.,  1.],
+            [ 1., -1.,  1.],
+            [ 1.,  1.,  1.],
+            [-1.,  1.,  1.]],dtype=torch.float32).cuda()
+
+            texture_coordinates = torch.tensor([[-1., -1., -1.],
+            [ 1., -1., -1.],
+            [ 1.,  1., -1.],
+            [-1.,  1., -1.],
+            [-1., -1.,  1.],
+            [ 1., -1.,  1.],
+            [ 1.,  1.,  1.],
+            [-1.,  1.,  1.]],dtype=torch.float32).cuda()
+            
+            tri = torch.tensor([
+                [0, 1, 2], [0, 2, 3],  # Front face
+                [4, 5, 6], [4, 6, 7],  # Back face
+                [0, 1, 5], [0, 5, 4],  # Left face
+                [2, 3, 7], [2, 7, 6],  # Right face
+                [0, 3, 7], [0, 7, 4],  # Top face
+                [1, 2, 6], [1, 6, 5]   # Bottom face
+            ], dtype=torch.int32).cuda()
+
+            col = torch.tensor([[-1., -1., -1.],
+            [ 1., -1., -1.],
+            [ 1.,  1., -1.],
+            [-1.,  1., -1.],
+            [-1., -1.,  1.],
+            [ 1., -1.,  1.],
+            [ 1.,  1.,  1.],
+            [-1.,  1.,  1.]],dtype=torch.float32).cuda()
+
+            from PIL import Image
+            map_texture_locations = ["posx.jpg", "negx.jpg", "posy.jpg", "negy.jpg", "posz.jpg", "negz.jpg"]
+            cube_map_texture = torch.zeros((1, 6, 256, 256, 3), dtype=torch.float32)
+            for i in range(6):
+                cube_map_texture[0, i] = torch.tensor(np.array(Image.open(f"cubemaps/SanFrancisco4/{map_texture_locations[i]}").resize((256, 256))).astype(np.float32) / 255.0)
+            cube_map_texture = cube_map_texture.cuda()
+
+            pos_clip = torch.bmm(F.pad(pos, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(1, -1, -1),
+                                    torch.transpose(mvp, 1, 2)).float() 
+            directional  = rays_d.view(1, h, w, 3)
+
+            bg_rast,_ = dr.rasterize(self.glctx, pos_clip, tri, (h, w))
+            bg_interp,_ = dr.interpolate(col, bg_rast, tri)
+            texture_interp,_ = dr.interpolate(texture_coordinates, bg_rast, tri)
+            bg_out = dr.texture(cube_map_texture, directional, boundary_mode="cube")
+            bg_color = bg_out
+
         # render
         pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train)
-
         rgb, normal, alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
                                            mlp_texture=self.mlp_texture, is_train=is_train)
         rgb = rgb * alpha + (1 - alpha) * bg_color
+
         normal = normal * alpha + (1 - alpha) * bg_color
+
 
         # smplx landmarks
         smplx_landmarks = torch.bmm(F.pad(smplx_landmarks, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0),
