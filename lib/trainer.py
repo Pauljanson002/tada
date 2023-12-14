@@ -285,12 +285,17 @@ class Trainer(object):
                 loss = loss + lambda_depth * (1 - self.pearson(depth, gt_depth))
         else:
             # rgb sds
-            loss = self.guidance.train_step(dir_text_z, image_annel).mean()
+            if self.opt.rgb_sds:
+                loss = self.guidance.train_step(dir_text_z, image_annel).mean()
+            else:
+                loss = 0
             if not self.dpt:
                 # normal sds
-                loss += self.guidance.train_step(dir_text_z, normal).mean()
+                if self.opt.normal_sds:
+                    loss += self.guidance.train_step(dir_text_z, normal).mean()
                 # latent mean sds
-                loss += self.guidance.train_step(dir_text_z, torch.cat([normal, image.detach()])).mean()
+                if self.opt.mean_sds:
+                    loss += self.guidance.train_step(dir_text_z, torch.cat([normal, image.detach()])).mean()
             else:
                 if p_iter < 0.3 or random.random() < 0.5:
                     # normal sds

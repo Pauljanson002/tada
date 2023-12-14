@@ -1,3 +1,6 @@
+defaults:
+  - default
+  - _self_
 name: 'wo_normal_supervision'
 stage: geo_tex
 test: False
@@ -11,7 +14,7 @@ model:
   albedo_res: 2048
   mesh: data/init_body/fit_smplx_dense.obj
 training:
-  anneal_tex_reso: True
+  anneal_tex_reso: False
   train_face_ratio: 0.0
   iters: 15000
   ckpt: scratch

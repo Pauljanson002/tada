@@ -317,7 +317,8 @@ class Mesh():
         cv2.imwrite(albedo_path, cv2.cvtColor(albedo, cv2.COLOR_RGB2BGR))
 
     def set_albedo(self, albedo):
-        self.albedo = torch.sigmoid(albedo)
+        # self.albedo = torch.sigmoid(albedo)
+        self.albedo = albedo
 
     def set_uv(self, vt, ft):
         self.vt = vt

@@ -7,33 +7,20 @@ from lib.provider import ViewDataset
 from lib.trainer import *
 from lib.dlmesh import DLMesh
 from lib.common.utils import load_config
-
+import hydra
+from omegaconf import OmegaConf
 torch.autograd.set_detect_anomaly(True)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, required=True, help='Path to config file')
-    # parser.add_argument('--mesh', type=str, required=True, help="mesh template, must be obj format")
-    parser.add_argument('--text', default=None, help="text prompt")
-    parser.add_argument('--negative', default='', help="negative text prompt")
-    parser.add_argument("--action", default="sitting", help="action")
-    args = parser.parse_args()
 
-    cfg = load_config(args.config, 'configs/default.yaml')
-
-    cfg.merge_from_list([
-        'text', args.text,
-        'negative', args.negative,
-        'action', args.action,
-    ])
-    # cfg.model.merge_from_list(['mesh', args.mesh])
-    # cfg.training.merge_from_list(['workspace', args.workspace])
-    cfg.freeze()
-    print(cfg)
+@hydra.main(version_base=None,config_path="../configs", config_name="tada_wo_dpt.yaml")
+def main(cfg):
+    # cfg = argparse.Namespace(**OmegaConf.to_container(cfg))
+    # cfg.freeze()
+    print(OmegaConf.to_yaml(cfg))
     # save config to workspace
     os.makedirs(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action), exist_ok=True)
     with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action,"config.yaml"), 'w') as f:
-        f.write(cfg.dump())
+        f.write(OmegaConf.to_yaml(cfg))
     seed_everything(cfg.seed)
 
     def build_dataloader(phase):
@@ -103,7 +90,7 @@ if __name__ == '__main__':
         except:
             guidance = configure_guidance()
 
-        wandb.init(project="tada",name=cfg.name,config=vars(cfg),tags=["tada"],mode="online")
+        wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["tada"],mode=cfg.wandb_mode)
 
 
         trainer = Trainer(cfg.name,
@@ -131,3 +118,6 @@ if __name__ == '__main__':
         test_loader = build_dataloader('test')
         trainer.test(test_loader)
         trainer.save_mesh()
+
+if __name__ == '__main__':
+    main()

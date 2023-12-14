@@ -33,6 +33,9 @@ training:
   lambda_normal: 1000
   lambda_depth: 10
   use_dpt: False
+  rgb_sds: True
+  normal_sds: True
+  mean_sds: True
 data:
   h: 512
   w: 512
@@ -80,4 +83,4 @@ smpl:
   gender: 'neutral'
   use_face_contour: False
   vitruvian_angle: 25
-
+wandb_mode: "disabled"

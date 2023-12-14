@@ -550,7 +550,6 @@ class ViewDataset(torch.utils.data.Dataset):
             'dirkey': self.id_dir_map[dirs],
             # 'azimuth': phis,
             'camera_type': camera_type,
-
             'polar': delta_polar,
             'azimuth': delta_azimuth,
             'radius': delta_radius,
