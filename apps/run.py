@@ -92,19 +92,19 @@ def main(cfg):
 
 
         trainer = Trainer(cfg.name,
-                          text=cfg.text,
-                          action=cfg.action,
-                          negative=cfg.negative,
-                          dir_text=cfg.data.dir_text,
-                          opt=cfg.training,
-                          model=model,
-                          guidance=guidance,
-                          device=device,
-                          optimizer=optimizer,
-                          fp16=cfg.fp16,
-                          lr_scheduler=scheduler,
-                          scheduler_update_every_step=True
-                          )
+                        text=cfg.text,
+                        action=cfg.action,
+                        negative=cfg.negative,
+                        dir_text=cfg.data.dir_text,
+                        opt=cfg.training,
+                        model=model,
+                        guidance=guidance,
+                        device=device,
+                        optimizer=optimizer,
+                        fp16=cfg.fp16,
+                        lr_scheduler=scheduler,
+                        scheduler_update_every_step=True
+                        )
         if os.path.exists(cfg.data.image):
             trainer.default_view_data = train_loader.dataset.get_default_view_data()
 

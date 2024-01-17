@@ -6,6 +6,7 @@ stage: geo_tex
 test: False
 model:
   use_6d: True
+  model_change: False
   lock_geo: False
   lock_beta: True
   lock_pose: False

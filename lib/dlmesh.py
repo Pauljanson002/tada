@@ -100,7 +100,11 @@ class DLMesh(nn.Module):
             self.body_pose = self.body_pose.view(1, -1)
 
             if self.opt.use_6d:
-                self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                if self.opt.model_change:
+                    self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                    self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
+                else:
+                    self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
 
             self.global_orient = torch.as_tensor(smplx_params["global_orient"]).to(self.device)
@@ -298,7 +302,10 @@ class DLMesh(nn.Module):
         # os.makedirs("./results/pipline/obj/", exist_ok=True)
         if not self.opt.lock_geo:
             if self.opt.use_6d:
-                body_pose_6d = self.body_pose_6d
+                if self.opt.model_change:
+                    body_pose_6d = self.body_pose_6d + self.init_body_pose_6d
+                else:
+                    body_pose_6d = self.body_pose_6d
                 body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
             else:
                 body_pose = self.body_pose
