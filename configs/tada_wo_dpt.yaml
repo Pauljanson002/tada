@@ -5,6 +5,7 @@ name: 'wo_normal_supervision'
 stage: geo_tex
 test: False
 model:
+  use_6d: True
   lock_geo: False
   lock_beta: True
   lock_pose: False

@@ -19,6 +19,7 @@ from lib.common.renderer import Renderer
 from lib.common.remesh import smplx_remesh_mask, subdivide, subdivide_inorder
 from lib.common.lbs import warp_points
 from lib.common.visual import draw_landmarks
+from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,axis_angle_to_matrix,matrix_to_rotation_6d
 import nvdiffrast.torch as dr
 import torchvision
 
@@ -92,12 +93,18 @@ class DLMesh(nn.Module):
             smplx_params = dict(np.load(param_file))
             self.betas = torch.as_tensor(smplx_params["betas"]).to(self.device)
             self.jaw_pose = torch.as_tensor(smplx_params["jaw_pose"]).to(self.device)
+            
             self.body_pose = torch.as_tensor(smplx_params["body_pose"]).to(self.device)
             self.body_pose = self.body_pose.view(-1, 3)
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
             self.body_pose = self.body_pose.view(1, -1)
 
+            if self.opt.use_6d:
+                self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                self.body_pose = None
+
             self.global_orient = torch.as_tensor(smplx_params["global_orient"]).to(self.device)
+    
             self.expression = torch.zeros(1, 100).to(self.device)
 
             self.remesh_mask = self.get_remesh_mask()
@@ -150,7 +157,11 @@ class DLMesh(nn.Module):
             # Jaw pose is not optimized
             # self.jaw_pose = nn.Parameter(self.jaw_pose)
         if not self.opt.lock_pose:
-            self.body_pose = nn.Parameter(self.body_pose)
+            if self.opt.use_6d:
+                self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+            else:
+                self.body_pose = nn.Parameter(self.body_pose)
+            
 
         # Create an FaceLandmarker object.
         base_options = python.BaseOptions(model_asset_path='data/mediapipe/face_landmarker.task')
@@ -267,7 +278,10 @@ class DLMesh(nn.Module):
                 params.append({'params': self.expression, 'lr': 0.05})
 
         if not self.opt.lock_pose:
-            params.append({'params': self.body_pose, 'lr': 0.05})
+            if self.opt.use_6d:
+                params.append({'params': self.body_pose_6d, 'lr': 0.05})
+            else:
+                params.append({'params': self.body_pose, 'lr': 0.05})
             #!!!! Not training Jaw pose for now 
             # params.append({'params': self.jaw_pose, 'lr': 0.05})
 
@@ -283,9 +297,14 @@ class DLMesh(nn.Module):
     def get_mesh(self, is_train):
         # os.makedirs("./results/pipline/obj/", exist_ok=True)
         if not self.opt.lock_geo:
+            if self.opt.use_6d:
+                body_pose_6d = self.body_pose_6d
+                body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
+            else:
+                body_pose = self.body_pose
             output = self.body_model(
                 betas=self.betas,
-                body_pose=self.body_pose,
+                body_pose=body_pose,
                 jaw_pose=self.jaw_pose,
                 # jaw_pose=random.choice(self.rich_params)[None, :3],
                 # jaw_pose=self.rich_params[500:501, :3],

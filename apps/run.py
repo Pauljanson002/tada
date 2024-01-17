@@ -60,7 +60,6 @@ def main(cfg):
 
     model = DLMesh(cfg.model)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     if cfg.test:
         trainer = Trainer(cfg.name,
                           text=cfg.text,
