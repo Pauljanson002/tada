@@ -168,6 +168,9 @@ class Trainer(object):
             else:  # path to ckpt
                 self.log(f"[INFO] Loading {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
+                
+        self.train_video_frames = []
+        self.write_train_video = True
 
     # calculate the text embeddings.
     #Show : Text embeddings
@@ -452,13 +455,18 @@ class Trainer(object):
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)
                 self.save_checkpoint(full=False, best=True)
-
                 
 
         end_t = time.time()
 
         self.log(f"[INFO] training takes {(end_t - start_t) / 60:.4f} minutes.")
 
+        if self.write_train_video:
+            all_preds = np.stack(self.train_video_frames, axis=0)
+            imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=9,
+                             macro_block_size=1)
+            self.log(f"==> Finished writing train video.")
+        
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer.close()
 
@@ -557,6 +565,8 @@ class Trainer(object):
                     "train-vis/images": wandb.Image(pred),
                     "train-vis/step": self.global_step,
                 })
+            if self.write_train_video:
+                self.train_video_frames.append(pred_rgbs)
 
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)

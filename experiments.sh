@@ -1,8 +1,2 @@
-CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=True training.normal_sds=True training.mean_sds=True wandb_mode="online" name=running_rgb_sds_True_normal_sds_True_mean_sds_True
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=True training.normal_sds=True training.mean_sds=False wandb_mode="online" name=running_rgb_sds_True_normal_sds_True_mean_sds_False
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=True training.normal_sds=False training.mean_sds=True wandb_mode="online" name=running_rgb_sds_True_normal_sds_False_mean_sds_True
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=True training.normal_sds=False training.mean_sds=False wandb_mode="online" name=running_rgb_sds_True_normal_sds_False_mean_sds_False
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=False training.normal_sds=True training.mean_sds=True wandb_mode="online" name=running_rgb_sds_False_normal_sds_True_mean_sds_True
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=False training.normal_sds=True training.mean_sds=False wandb_mode="online" name=running_rgb_sds_False_normal_sds_True_mean_sds_False
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=False training.normal_sds=False training.mean_sds=True wandb_mode="online" name=running_rgb_sds_False_normal_sds_False_mean_sds_True
-# CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" training.rgb_sds=False training.normal_sds=False training.mean_sds=False wandb_mode="online" name=running_rgb_sds_False_normal_sds_False_mean_sds_False
+CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" wandb_mode="online" name=six_d_use_6d=True model.use_6d=True
+CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" wandb_mode="online" name=six_d_use_6d=False model.use_6d=False

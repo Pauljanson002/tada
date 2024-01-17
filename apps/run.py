@@ -74,7 +74,6 @@ def main(cfg):
                           )
 
         test_loader = build_dataloader('test')
-
         trainer.test(test_loader)
 
         if cfg.save_mesh:
