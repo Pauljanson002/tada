@@ -462,6 +462,8 @@ class Trainer(object):
                     all_preds = np.stack(self.train_video_frames, axis=0)
                     imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=9,
                                     macro_block_size=1)
+            if self.opt.debug:
+                break
                 
 
         end_t = time.time()
@@ -573,7 +575,8 @@ class Trainer(object):
                     "train-vis/step": self.global_step,
                 })
             if self.write_train_video:
-                self.train_video_frames.append(pred_rgbs)
+                pred_rgb_only = pred_rgbs[:,:512, :]
+                self.train_video_frames.append(pred_rgb_only)
 
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
@@ -597,6 +600,8 @@ class Trainer(object):
                 else:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
                 pbar.update(loader.batch_size)
+            if self.opt.debug:
+                break
 
         if self.ema is not None:
             self.ema.update()

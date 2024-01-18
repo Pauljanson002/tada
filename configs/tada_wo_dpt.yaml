@@ -18,10 +18,11 @@ model:
 training:
   anneal_tex_reso: False
   train_face_ratio: 0.0
-  iters: 15000
+  iters: 5000
   ckpt: scratch
   workspace: "./outputs"
   use_dpt: False
+  debug: False
 data:
   phi_range: [0, 0]
   theta_range: [60, 60]

@@ -23,3 +23,6 @@ ninja
 mediapipe
 timm
 git+https://github.com/NVlabs/nvdiffrast.git
+loguru
+torch==2.0.1
+hydra-core==1.3.2
