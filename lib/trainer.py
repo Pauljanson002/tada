@@ -425,8 +425,12 @@ class Trainer(object):
         self.log(f"==> Finished saving mesh.")
 
     def train(self, train_loader, valid_loader, max_epochs):
+        
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
+            
+        save_path = os.path.join(self.workspace, 'results')
+        os.makedirs(save_path, exist_ok=True)
 
         start_t = time.time()
 
@@ -454,17 +458,21 @@ class Trainer(object):
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)
                 self.save_checkpoint(full=False, best=True)
+                if self.write_train_video:
+                    all_preds = np.stack(self.train_video_frames, axis=0)
+                    imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=9,
+                                    macro_block_size=1)
                 
 
         end_t = time.time()
 
         self.log(f"[INFO] training takes {(end_t - start_t) / 60:.4f} minutes.")
-
         if self.write_train_video:
             all_preds = np.stack(self.train_video_frames, axis=0)
             imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=9,
-                             macro_block_size=1)
+                            macro_block_size=1)
             self.log(f"==> Finished writing train video.")
+
         
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer.close()
@@ -487,7 +495,7 @@ class Trainer(object):
         self.log(f"==> Start Test, save results to {save_path}")
 
         pbar = tqdm.tqdm(total=len(loader) * loader.batch_size,
-                         bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+                        bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         self.model.eval()
 
         if write_video:
