@@ -18,7 +18,6 @@ from torch_ema import ExponentialMovingAverage
 import wandb
 
 from lib.common.utils import *
-from lib.common.visual import draw_landmarks, draw_mediapipe_landmarks
 from lib.dpt import DepthNormalEstimation
 import wandb
 class Trainer(object):
@@ -313,73 +312,6 @@ class Trainer(object):
                     #                   dpt_normal[0].permute(1, 2, 0).detach().cpu().numpy()]) * 255
                     # cv2.imwrite("im.png", pred)
                     # exit()
-
-        if False:
-            rgb_np_ori = out['image'].squeeze(0).detach().cpu().numpy()
-            mediapipe_landmarks = self.model.get_mediapipe_landmarks(rgb_np_ori * 255)
-            if len(mediapipe_landmarks) > 0:
-                mp_mouth_idx = [0, 321, 291, 37, 39, 40, 267, 17, 146, 84, 181, 405,
-                                375, 185, 314, 91, 61, 269, 270, 409, 291]
-                mp_nose_idx = [168, 6, 197, 195, 5]
-                mp_contour_idx = [132, 136, 397, 400, 148, 149, 150, 152, 288, 172, 176, 58,
-                                  323, 454, 93, 356, 361, 234, 365, 377, 378, 379, 127]
-
-                mp_lmk_mouth = np.array([
-                    [landmark.x, landmark.y] for idx, landmark in enumerate(mediapipe_landmarks[0]) if
-                    idx in mp_mouth_idx
-                ])
-                mp_lmk_nose = np.array([
-                    [landmark.x, landmark.y] for idx, landmark in enumerate(mediapipe_landmarks[0]) if
-                    idx in mp_nose_idx
-                ])
-                mp_lmk_contour = np.array([
-                    [landmark.x, landmark.y] for idx, landmark in enumerate(mediapipe_landmarks[0]) if
-                    idx in mp_contour_idx
-                ])
-                mp_lmk_all = np.array(
-                    [[landmark.x, landmark.y] for idx, landmark in enumerate(mediapipe_landmarks[0])])
-
-                mp_lmk_mouth = torch.tensor(mp_lmk_mouth, device=image.device).float().view(1, -1, 2)
-                mp_lmk_nose = torch.tensor(mp_lmk_nose, device=image.device).float().view(1, -1, 2)
-                mp_lmk_contour = torch.tensor(mp_lmk_contour, device=image.device).float().view(1, -1, 2)
-
-                smplx_lmk_eye_brow, smplx_lmk_nose, _, smplx_lmk_eye, smplx_lmk_mouth, smplx_lmk_lips, \
-                    smplx_lmk_contour = torch.split(out['smplx_landmarks'], [10, 4, 5, 12, 12, 8, 17], dim=1)
-
-                #             # landmarks loss
-                #             lips_chamfer, _ = chamfer_distance(mp_lmk_mouth, smplx_lmk_mouth)
-                #             nose_chamfer, _ = chamfer_distance(mp_lmk_nose, smplx_lmk_nose)
-                #             contour_chamfer, _ = chamfer_distance(mp_lmk_contour, smplx_lmk_contour)
-                #             lmk_loss = lips_chamfer + nose_chamfer + contour_chamfer
-                #             # print(lmk_loss.item(), loss.item())
-                #             loss += lmk_loss * 1e4
-                #
-                # visualize
-                # nml_np = draw_landmarks(out['normal'][0].detach().cpu().numpy() * 255,
-                #                         torch.cat([smplx_lmk_mouth, smplx_lmk_nose, smplx_lmk_contour], 1)[0],
-                #                         fill=(0, 0, 255))
-                # rgb_np = draw_landmarks(rgb_np_ori*255, torch.tensor(mp_lmk_all).float().view(-1, 2), fill=(255, 0, 0))
-                nml_np_ori = out['normal'][0].detach().cpu().numpy().copy() * 255
-                nml_np = draw_landmarks(nml_np_ori, smplx_lmk_eye[0], fill=(255, 255, 255))
-                nml_np = draw_landmarks(nml_np, smplx_lmk_nose[0], fill=(255, 255, 255))
-                nml_np = draw_landmarks(nml_np, torch.cat([smplx_lmk_mouth, smplx_lmk_lips], 1)[0],
-                                        fill=(255, 255, 255))
-                nml_np = draw_landmarks(nml_np, smplx_lmk_eye_brow[0], fill=(255, 255, 255))
-
-                # rgb_np = draw_landmarks(rgb_np_ori * 255, smplx_lmk_eye[0], fill=(255, 255, 255))
-                # rgb_np = draw_landmarks(rgb_np, smplx_lmk_nose[0], fill=(255, 255, 255))
-                # rgb_np = draw_landmarks(rgb_np, torch.cat([smplx_lmk_mouth, smplx_lmk_lips], 1)[0], fill=(255, 255, 255))
-                # rgb_np = draw_landmarks(rgb_np, smplx_lmk_eye_brow[0], fill=(255, 255, 255))
-                # rgb_np = draw_landmarks(rgb_np * 255, out['smplx_landmarks'][0], fill=(0, 0, 255))
-
-                # nml_np = out['normal'][0].detach().cpu().numpy() * 255
-                rgb_np = draw_mediapipe_landmarks(rgb_np_ori * 255, mediapipe_landmarks)
-                nml_np_ori = out['normal'][0].detach().cpu().numpy().copy() * 255
-                # rgb_np = draw_landmarks(rgb_np, torch.cat([mp_lmk_mouth, mp_lmk_nose, mp_lmk_contour], 1)[0])
-                pred = np.hstack(
-                    [rgb_np[:, 80:-80], nml_np[:, 80:-80], rgb_np_ori[:, 80:256] * 255, nml_np_ori[:, 256:-80]])[50:]
-                cv2.imwrite("im.png", pred[..., ::-1])
-                exit()
 
 
         return pred, loss
