@@ -1,5 +1,5 @@
 name: 'default'
-seed: 0
+seed: 2222
 stage: "geo"
 fp16: False
 text: ""
