@@ -1,8 +1,9 @@
-use_6d = [True, False]
 model_changes = [True, False]
-for u_6d in use_6d:
-    for model_change in model_changes:
-        name = f"six_d_use_6d_{u_6d}_model_change_{model_change}"
-        script = f'CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" wandb_mode="online" name={name} model.use_6d={u_6d} model.model_change={model_change}'
+use_full_pose = [True, False]
+actions = ["running", "sitting","jumping"]
+for model_change in model_changes:
+    for full_pose in use_full_pose:
+        name = f"full_pose__model_change_{model_change}_full_pose_{full_pose}"
+        script = f'CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action="running" wandb_mode="online" name={name} model.model_change={model_change} model.use_full_pose={full_pose}'
         print(script)
     # Execute the script or save it for later use

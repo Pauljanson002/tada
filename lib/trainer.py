@@ -496,7 +496,7 @@ class Trainer(object):
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 pred_rgbs, loss = self.train_step(data, loader.dataset.full_body)
-
+                
             if self.global_step % 20 == 0:
                 pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
                 save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.png')

@@ -98,13 +98,35 @@ class DLMesh(nn.Module):
             self.body_pose = self.body_pose.view(-1, 3)
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
             self.body_pose = self.body_pose.view(1, -1)
-
             if self.opt.use_6d:
                 if self.opt.model_change:
-                    self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
-                    self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
+                    if self.opt.use_full_pose:
+                        self.init_full_pose_6d = torch.cat([
+                            torch.zeros(1, 6).to(self.device), # global_orient
+                            matrix_to_rotation_6d(axis_angle_to_matrix(torch.as_tensor(smplx_params["body_pose"]).view(-1, 3)).to(self.device)), # body
+                            matrix_to_rotation_6d(axis_angle_to_matrix(torch.as_tensor(smplx_params["jaw_pose"]).view(-1, 3)).to(self.device)), # jaw
+                            torch.zeros(1, 6).to(self.device),  # left eye
+                            torch.zeros(1, 6).to(self.device), # right eye
+                            torch.zeros(15, 6).to(self.device), # left hand
+                            torch.zeros(15, 6).to(self.device), # right hand
+                        ],dim=0).reshape(1,-1)
+                        self.full_pose_6d = torch.zeros(self.init_full_pose_6d.shape).to(self.device) 
+                    else:
+                        self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                        self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)                  
                 else:
-                    self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                    if self.opt.use_full_pose:
+                        self.full_pose_6d = torch.cat([
+                            torch.zeros(1, 6).to(self.device), # global_orient
+                            matrix_to_rotation_6d(axis_angle_to_matrix(torch.as_tensor(smplx_params["body_pose"]).view(-1, 3)).to(self.device)), # body
+                            matrix_to_rotation_6d(axis_angle_to_matrix(torch.as_tensor(smplx_params["jaw_pose"]).view(-1, 3)).to(self.device)), # jaw
+                            torch.zeros(1, 6).to(self.device),  # left eye
+                            torch.zeros(1, 6).to(self.device), # right eye
+                            torch.zeros(15, 6).to(self.device), # left hand
+                            torch.zeros(15, 6).to(self.device), # right hand
+                        ],dim=0).reshape(1,-1)
+                    else:
+                        self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
 
             self.global_orient = torch.as_tensor(smplx_params["global_orient"]).to(self.device)
@@ -158,11 +180,13 @@ class DLMesh(nn.Module):
             self.rich_params = torch.as_tensor(rich_data, dtype=torch.float32, device=self.device)
             if not self.opt.lock_expression:
                 self.expression = nn.Parameter(self.expression)
-            # Jaw pose is not optimized
             # self.jaw_pose = nn.Parameter(self.jaw_pose)
         if not self.opt.lock_pose:
             if self.opt.use_6d:
-                self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+                if self.opt.use_full_pose:
+                    self.full_pose_6d = nn.Parameter(self.full_pose_6d)
+                else:
+                    self.body_pose_6d = nn.Parameter(self.body_pose_6d)
             else:
                 self.body_pose = nn.Parameter(self.body_pose)
             
@@ -283,7 +307,10 @@ class DLMesh(nn.Module):
 
         if not self.opt.lock_pose:
             if self.opt.use_6d:
-                params.append({'params': self.body_pose_6d, 'lr': 0.05})
+                if self.opt.use_full_pose:
+                    params.append({'params': self.full_pose_6d, 'lr': 0.05})
+                else:
+                    params.append({'params': self.body_pose_6d, 'lr': 0.05})
             else:
                 params.append({'params': self.body_pose, 'lr': 0.05})
             #!!!! Not training Jaw pose for now 
@@ -303,16 +330,49 @@ class DLMesh(nn.Module):
         if not self.opt.lock_geo:
             if self.opt.use_6d:
                 if self.opt.model_change:
-                    body_pose_6d = self.body_pose_6d + self.init_body_pose_6d
+                    if self.opt.use_full_pose:
+                        full_pose_6d = self.full_pose_6d + self.init_full_pose_6d
+                    else:
+                        body_pose_6d = self.body_pose_6d + self.init_body_pose_6d
                 else:
-                    body_pose_6d = self.body_pose_6d
-                body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
+                    if self.opt.use_full_pose:
+                        full_pose_6d = self.full_pose_6d
+                    else:
+                        body_pose_6d = self.body_pose_6d
+                if self.opt.use_full_pose:
+                    full_pose_6d = full_pose_6d.view(-1,6)
+                    global_orient = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[:1].view(-1,6))).view(1,-1)
+                    body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[1:22].view(-1,6))).view(1,-1)
+                    jaw_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[22:23].view(-1,6))).view(1,-1)
+                    left_eye_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[23:24].view(-1,6))).view(1,-1)
+                    right_eye_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[24:25].view(-1,6))).view(1,-1)
+                    left_hand_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[25:40].view(-1,6))).view(1,-1)
+                    right_hand_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[40:55].view(-1,6))).view(1,-1)
+                else:
+                    body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
+                    global_orient = self.global_orient
+                    jaw_pose = None
+                    left_eye_pose = None
+                    right_eye_pose = None
+                    left_hand_pose = None
+                    right_hand_pose = None
             else:
                 body_pose = self.body_pose
+                global_orient = self.global_orient
+                jaw_pose = None
+                left_eye_pose = None
+                right_eye_pose = None
+                left_hand_pose = None
+                right_hand_pose = None
             output = self.body_model(
                 betas=self.betas,
                 body_pose=body_pose,
-                jaw_pose=self.jaw_pose,
+                jaw_pose=jaw_pose,
+                global_orient=global_orient,
+                left_hand_pose=left_hand_pose,
+                right_hand_pose=right_hand_pose,
+                left_eye_pose=left_eye_pose,
+                right_eye_pose=right_eye_pose,
                 # jaw_pose=random.choice(self.rich_params)[None, :3],
                 # jaw_pose=self.rich_params[500:501, :3],
                 expression=self.expression,
