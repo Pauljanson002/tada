@@ -403,7 +403,7 @@ class Trainer(object):
         self.log(f"[INFO] training takes {(end_t - start_t) / 60:.4f} minutes.")
         if self.write_train_video:
             all_preds = np.stack(self.train_video_frames, axis=0)
-            imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=9,
+            imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
                             macro_block_size=1)
             self.log(f"==> Finished writing train video.")
 
@@ -508,7 +508,8 @@ class Trainer(object):
                 })
             if self.write_train_video:
                 pred_rgb_only = pred_rgbs[:,:512, :]
-                self.train_video_frames.append(pred_rgb_only)
+                pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
+                self.train_video_frames.append(pred_rgb_resized)
 
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
