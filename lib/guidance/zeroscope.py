@@ -315,7 +315,7 @@ class ZeroScope(nn.Module):
     
 
     def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,
-                      guidance_scale=7.5, latents=None):
+                    guidance_scale=7.5, latents=None):
 
         if isinstance(prompts, str):
             prompts = [prompts]
@@ -330,8 +330,8 @@ class ZeroScope(nn.Module):
 
         # Text embeds -> img latents
         latents = self.produce_latents(text_embeds, height=height, width=width, latents=latents,
-                                       num_inference_steps=num_inference_steps,
-                                       guidance_scale=guidance_scale)  # [1, 4, 64, 64]
+                                    num_inference_steps=num_inference_steps,
+                                    guidance_scale=guidance_scale)  # [1, 4, 64, 64]
 
         # Img latents -> imgs
         imgs = self.decode_latents(latents)  # [1, 3, 512, 512]

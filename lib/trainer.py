@@ -426,7 +426,7 @@ class Trainer(object):
                 self.save_checkpoint(full=False, best=True)
                 if self.write_train_video:
                     all_preds = np.stack(self.train_video_frames, axis=0)
-                    imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=9,
+                    imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
                                     macro_block_size=1)
             if self.opt.debug:
                 break
@@ -560,7 +560,9 @@ class Trainer(object):
                     pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
                     self.train_video_frames.append(pred_rgb_resized)
                 else:
-                    self.train_video_frames.append(np.concatenate(pred_rgbs,axis=0))
+                    t_pred = pred_rgbs.transpose(1,0,2,3)
+                    t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
+                    self.train_video_frames.append(t_pred)
 
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
