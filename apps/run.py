@@ -41,6 +41,9 @@ def main(cfg):
         elif opt.name == 'if':
             from lib.guidance.deepfloyd import IF
             return IF(device, opt.vram_O)
+        elif opt.name == "zeroscope":
+            from lib.guidance.zeroscope import ZeroScope
+            return ZeroScope(device,cfg.fp16, opt.vram_O)
         else:
             from lib.guidance.clip import CLIP
             return CLIP(device)

@@ -22,29 +22,29 @@ from lib.dpt import DepthNormalEstimation
 import wandb
 class Trainer(object):
     def __init__(self,
-                 name,  # name of this experiment
-                 text, action , negative, dir_text,
-                 opt,  # extra conf
-                 model,  # network
-                 guidance,  # guidance network
-                 criterion=None,  # loss function, if None, assume inline implementation in step
-                 optimizer=None,  # optimizer
-                 ema_decay=None,  # if use EMA, set the decay
-                 lr_scheduler=None,  # scheduler
-                 metrics=[],
-                 # metrics for evaluation, if None, use val_loss to measure performance, else use the first metric.
-                 local_rank=0,  # which GPU am I
-                 world_size=1,  # total num of GPUs
-                 device=None,  # device to use, usually setting to None is OK. (auto choose device)
-                 mute=False,  # whether to mute all print
-                 fp16=False,  # amp optimize level
-                 max_keep_ckpt=2,  # max num of saved ckpts in disk
-                 best_mode='min',  # the smaller/larger result, the better
-                 use_loss_as_metric=True,  # use loss as the first metric
-                 report_metric_at_train=False,  # also report metrics at training
-                 use_tensorboardX=True,  # whether to use tensorboard for logging
-                 scheduler_update_every_step=False,  # whether to call scheduler.step() after every train step
-                 ):
+                name,  # name of this experiment
+                text, action , negative, dir_text,
+                opt,  # extra conf
+                model,  # network
+                guidance,  # guidance network
+                criterion=None,  # loss function, if None, assume inline implementation in step
+                optimizer=None,  # optimizer
+                ema_decay=None,  # if use EMA, set the decay
+                lr_scheduler=None,  # scheduler
+                metrics=[],
+                # metrics for evaluation, if None, use val_loss to measure performance, else use the first metric.
+                local_rank=0,  # which GPU am I
+                world_size=1,  # total num of GPUs
+                device=None,  # device to use, usually setting to None is OK. (auto choose device)
+                mute=False,  # whether to mute all print
+                fp16=False,  # amp optimize level
+                max_keep_ckpt=2,  # max num of saved ckpts in disk
+                best_mode='min',  # the smaller/larger result, the better
+                use_loss_as_metric=True,  # use loss as the first metric
+                report_metric_at_train=False,  # also report metrics at training
+                use_tensorboardX=True,  # whether to use tensorboard for logging
+                scheduler_update_every_step=False,  # whether to call scheduler.step() after every train step
+                ):
 
         self.dpt = DepthNormalEstimation(use_depth=False) if opt.use_dpt else None
         self.default_view_data = None
@@ -253,22 +253,48 @@ class Trainer(object):
         dir_text_z = [self.text_embeds['uncond'], self.text_embeds[data['camera_type'][0]][data['dirkey'][0]]]
         dir_text_z = torch.cat(dir_text_z)
         out = self.model(rays_o, rays_d, mvp, data['H'], data['W'], shading='albedo')
-        image = out['image'].permute(0, 3, 1, 2)
-        normal = out['normal'].permute(0, 3, 1, 2)
-        alpha = out['alpha'].permute(0, 3, 1, 2)
-        
+        video = self.model.opt.video
+        if not video:
+            image = out['image'].permute(0, 3, 1, 2)
+            normal = out['normal'].permute(0, 3, 1, 2)
+            alpha = out['alpha'].permute(0, 3, 1, 2)
+            
         # Show losses
+        if not video:
+            out_annel = self.model(rays_o, rays_d, mvp, H, W, shading='albedo')
+            image_annel = out_annel['image'].permute(0, 3, 1, 2)
+            normal_annel = out_annel['normal'].permute(0, 3, 1, 2)
+            alpha_annel = out_annel['alpha'].permute(0, 3, 1, 2)
 
-        out_annel = self.model(rays_o, rays_d, mvp, H, W, shading='albedo')
-        image_annel = out_annel['image'].permute(0, 3, 1, 2)
-        normal_annel = out_annel['normal'].permute(0, 3, 1, 2)
-        alpha_annel = out_annel['alpha'].permute(0, 3, 1, 2)
+            pred = torch.cat([out['image'], out['normal']], dim=2)
+            pred = (pred[0].detach().cpu().numpy() * 255).astype(np.uint8)
 
-        pred = torch.cat([out['image'], out['normal']], dim=2)
-        pred = (pred[0].detach().cpu().numpy() * 255).astype(np.uint8)
+            p_iter = self.global_step / self.opt.iters
+            
+        else:
+            
+            video_frames = out["video"].squeeze(1)
+            normal_frames = out["normal_vid"].squeeze(1)
+            alpha_frames = out["alpha_vid"].squeeze(1)
+            video_frames_np = (video_frames.detach().cpu().numpy() * 255).astype(np.uint8)
+            video_frames = video_frames.permute(0, 3, 1, 2)
+            normal_frames = normal_frames.permute(0, 3, 1, 2)
+            alpha_frames = alpha_frames.permute(0, 3, 1, 2)
+            loss = self.guidance.train_step(dir_text_z, video_frames).mean() # [F,C,H,W]
+            pred = video_frames_np
+            
 
-        p_iter = self.global_step / self.opt.iters
-
+            if self.opt.rgb_sds:
+                loss = self.guidance.train_step(dir_text_z, video_frames).mean()
+            else:
+                loss = 0
+            
+            # TODO: Implement normal sds
+            # if self.opt.normal_sds:
+            #     loss += self.guidance.train_step(dir_text_z, normal_frames).mean()
+            # if self.opt.mean_sds:
+            #     loss += self.guidance.train_step(dir_text_z, torch.cat([normal_frames, video_frames.detach()])).mean() #TODO: Why detach video frames?
+            
         if do_rgbd_loss:  # with image input
             # gt_mask = data['mask']  # [B, H, W]
             gt_rgb = data['rgb']  # [B, 3, H, W]
@@ -286,32 +312,33 @@ class Trainer(object):
                 loss = loss + lambda_depth * (1 - self.pearson(depth, gt_depth))
         else:
             # rgb sds
-            if self.opt.rgb_sds:
-                loss = self.guidance.train_step(dir_text_z, image_annel).mean()
-            else:
-                loss = 0
-            if not self.dpt:
-                # normal sds
-                if self.opt.normal_sds:
-                    loss += self.guidance.train_step(dir_text_z, normal).mean()
-                # latent mean sds
-                if self.opt.mean_sds:
-                    loss += self.guidance.train_step(dir_text_z, torch.cat([normal, image.detach()])).mean()
-            else:
-                if p_iter < 0.3 or random.random() < 0.5:
+            if not video:
+                if self.opt.rgb_sds:
+                    loss = self.guidance.train_step(dir_text_z, image_annel).mean()
+                else:
+                    loss = 0
+                if not self.dpt:
                     # normal sds
-                    loss += self.guidance.train_step(dir_text_z, normal).mean()
-                elif self.dpt is not None :
-                    # normal image loss
-                    dpt_normal = self.dpt(image)
-                    dpt_normal = (1 - dpt_normal) * alpha + (1 - alpha)
-                    lambda_normal = self.opt.lambda_normal * min(1, self.global_step / self.opt.iters)
-                    loss += lambda_normal * (1 - F.cosine_similarity(normal, dpt_normal).mean())
+                    if self.opt.normal_sds:
+                        loss += self.guidance.train_step(dir_text_z, normal).mean()
+                    # latent mean sds
+                    if self.opt.mean_sds:
+                        loss += self.guidance.train_step(dir_text_z, torch.cat([normal, image.detach()])).mean()
+                else:
+                    if p_iter < 0.3 or random.random() < 0.5:
+                        # normal sds
+                        loss += self.guidance.train_step(dir_text_z, normal).mean()
+                    elif self.dpt is not None :
+                        # normal image loss
+                        dpt_normal = self.dpt(image)
+                        dpt_normal = (1 - dpt_normal) * alpha + (1 - alpha)
+                        lambda_normal = self.opt.lambda_normal * min(1, self.global_step / self.opt.iters)
+                        loss += lambda_normal * (1 - F.cosine_similarity(normal, dpt_normal).mean())
 
-                    # pred = np.hstack([(normal[0]).permute(1, 2, 0).detach().cpu().numpy(),
-                    #                   dpt_normal[0].permute(1, 2, 0).detach().cpu().numpy()]) * 255
-                    # cv2.imwrite("im.png", pred)
-                    # exit()
+                        # pred = np.hstack([(normal[0]).permute(1, 2, 0).detach().cpu().numpy(),
+                        #                   dpt_normal[0].permute(1, 2, 0).detach().cpu().numpy()]) * 255
+                        # cv2.imwrite("im.png", pred)
+                        # exit()
 
 
         return pred, loss
@@ -322,9 +349,12 @@ class Trainer(object):
         rays_o = data['rays_o']  # [B, N, 3]
         rays_d = data['rays_d']  # [B, N, 3]
         out = self.model(rays_o, rays_d, mvp, H, W, shading='albedo', is_train=False)
-        w = out['normal'].shape[2]
-        pred = torch.cat([out['normal'], out['image'],
-                          torch.cat([out['normal'][:, :, :w // 2], out['image'][:, :, w // 2:]], dim=2)], dim=1)
+        if not self.model.opt.video: 
+            w = out['normal'].shape[2]
+            pred = torch.cat([out['normal'], out['image'],
+                            torch.cat([out['normal'][:, :, :w // 2], out['image'][:, :, w // 2:]], dim=2)], dim=1)
+        else:
+            pred = out["video"].squeeze(1)
 
         # dummy 
         loss = torch.zeros([1], device=pred.device, dtype=pred.dtype)
@@ -337,9 +367,13 @@ class Trainer(object):
         rays_o = data['rays_o']  # [B, N, 3]
         rays_d = data['rays_d']  # [B, N, 3]
         out = self.model(rays_o, rays_d, mvp, H, W, shading='albedo', is_train=False)
-        w = out['normal'].shape[2]
-        pred = torch.cat([out['normal'], out['image'],
+
+        if not self.model.opt.video:
+            w = out['normal'].shape[2]
+            pred = torch.cat([out['normal'], out['image'],
                           torch.cat([out['normal'][:, :, :w // 2], out['image'][:, :, w // 2:]], dim=2)], dim=2)
+        else:
+            pred = out["video"].squeeze(1)
 
         return pred, None
 
@@ -441,9 +475,13 @@ class Trainer(object):
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     preds, _ = self.test_step(data)
 
-                pred = preds[0].detach().cpu().numpy()
-                pred = (pred * 255).astype(np.uint8)
-
+                if not self.model.opt.video:
+                    pred = preds[0].detach().cpu().numpy()
+                    pred = (pred * 255).astype(np.uint8)
+                else:
+                    pred = preds.detach().cpu().numpy()
+                    pred = (pred * 255).astype(np.uint8)
+                    pred = np.concatenate(pred, axis=0)
                 if write_video:
                     all_preds.append(pred)
                 else:
@@ -454,10 +492,15 @@ class Trainer(object):
                 pbar.update(loader.batch_size)
 
         if write_video:
-            all_preds = np.stack(all_preds, axis=0)
+            if not self.model.opt.video:
+                all_preds = np.stack(all_preds, axis=0)
 
-            imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=9,
-                             macro_block_size=1)
+                imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=9,
+                                macro_block_size=1)
+            else:
+                all_preds = np.stack(all_preds, axis=0)
+                imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=5,
+                                macro_block_size=1)
 
         self.log(f"==> Finished Test.")
 
@@ -480,7 +523,7 @@ class Trainer(object):
         if self.local_rank == 0:
             pbar = tqdm.tqdm(total=len(loader) * loader.batch_size,
                              bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
-
+        video = self.model.opt.video
         self.local_step = 0
 
         for data in loader:
@@ -498,18 +541,26 @@ class Trainer(object):
                 pred_rgbs, loss = self.train_step(data, loader.dataset.full_body)
                 
             if self.global_step % 20 == 0:
-                pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
-                save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.png')
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                cv2.imwrite(save_path, pred)
-                wandb.log({
-                    "train-vis/images": wandb.Image(pred),
-                    "train-vis/step": self.global_step,
-                })
+                if not video:
+                    pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
+                    save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.png')
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    cv2.imwrite(save_path, pred)
+                    wandb.log({
+                        "train-vis/images": wandb.Image(pred),
+                        "train-vis/step": self.global_step,
+                    })
+                else:
+                    save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.mp4')
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    imageio.mimwrite(save_path, pred_rgbs , fps=1, quality=5, macro_block_size=1)
             if self.write_train_video:
-                pred_rgb_only = pred_rgbs[:,:512, :]
-                pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
-                self.train_video_frames.append(pred_rgb_resized)
+                if not video:
+                    pred_rgb_only = pred_rgbs[:,:512, :]
+                    pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
+                    self.train_video_frames.append(pred_rgb_resized)
+                else:
+                    self.train_video_frames.append(np.concatenate(pred_rgbs,axis=0))
 
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
@@ -605,19 +656,31 @@ class Trainer(object):
 
                 # only rank = 0 will perform evaluation.
                 if self.local_rank == 0:
-                    pred = (preds[0].detach().cpu().numpy() * 255).astype(np.uint8)
-                    pred = cv2.cvtColor(pred, cv2.COLOR_RGB2BGR)
-                    vis_frames.append(pred)
-                    pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
-                    pbar.update(loader.batch_size)
-
-        save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        cv2.imwrite(save_path, np.hstack(vis_frames))
-        wandb.log({
-            "validation/images": wandb.Image(np.hstack(vis_frames)),
-            "validation/step": self.epoch,
-        })
+                    if not self.model.opt.video:
+                        pred = (preds[0].detach().cpu().numpy() * 255).astype(np.uint8)
+                        pred = cv2.cvtColor(pred, cv2.COLOR_RGB2BGR)
+                        vis_frames.append(pred)
+                        pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
+                        pbar.update(loader.batch_size)
+                    else:
+                        pred = preds.detach().cpu().numpy()
+                        pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
+                        pbar.update(loader.batch_size)
+                        
+        if not self.model.opt.video:
+            save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            cv2.imwrite(save_path, np.hstack(vis_frames))
+            wandb.log({
+                "validation/images": wandb.Image(np.hstack(vis_frames)),
+                "validation/step": self.epoch,
+            })
+        else:
+            save_path = os.path.join(self.workspace, 'validation', f'{name}.mp4')
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            pred = (pred * 255).astype(np.uint8)
+            imageio.mimwrite(save_path, pred, fps=1, quality=5, macro_block_size=1)
+            
 
         average_loss = total_loss / self.local_step
         self.stats["valid_loss"].append(average_loss)

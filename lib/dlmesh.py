@@ -113,7 +113,10 @@ class DLMesh(nn.Module):
                         self.full_pose_6d = torch.zeros(self.init_full_pose_6d.shape).to(self.device) 
                     else:
                         self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
-                        self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)                  
+                        self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([3,1])
+                        self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
+                        self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
+                        
                 else:
                     if self.opt.use_full_pose:
                         self.full_pose_6d = torch.cat([
@@ -187,6 +190,7 @@ class DLMesh(nn.Module):
                     self.full_pose_6d = nn.Parameter(self.full_pose_6d)
                 else:
                     self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+                    self.body_pose_6d_set = nn.Parameter(self.body_pose_6d_set)
             else:
                 self.body_pose = nn.Parameter(self.body_pose)
             
@@ -311,6 +315,7 @@ class DLMesh(nn.Module):
                     params.append({'params': self.full_pose_6d, 'lr': 0.05})
                 else:
                     params.append({'params': self.body_pose_6d, 'lr': 0.05})
+                    params.append({'params': self.body_pose_6d_set, 'lr': 0.05})
             else:
                 params.append({'params': self.body_pose, 'lr': 0.05})
             #!!!! Not training Jaw pose for now 
@@ -325,15 +330,20 @@ class DLMesh(nn.Module):
             v_offsets[SMPLXSeg.hands_ids] = 0.
         return v_offsets
 
-    def get_mesh(self, is_train):
+    def get_mesh(self, is_train,frame_id=0):
         # os.makedirs("./results/pipline/obj/", exist_ok=True)
+        video = self.opt.video
         if not self.opt.lock_geo:
             if self.opt.use_6d:
                 if self.opt.model_change:
                     if self.opt.use_full_pose:
                         full_pose_6d = self.full_pose_6d + self.init_full_pose_6d
                     else:
-                        body_pose_6d = self.body_pose_6d + self.init_body_pose_6d
+                        if not video:
+                            body_pose_6d = self.body_pose_6d + self.init_body_pose_6d
+                        else:
+                            body_pose_6d_set = self.body_pose_6d_set + self.init_body_pose_6d_set
+                            body_pose_6d = body_pose_6d_set[frame_id]
                 else:
                     if self.opt.use_full_pose:
                         full_pose_6d = self.full_pose_6d
@@ -434,6 +444,7 @@ class DLMesh(nn.Module):
 
     @torch.no_grad()
     def export_mesh(self, save_dir):
+        #TODO: Export mesh for video
         mesh = self.get_mesh(is_train=False)[0]
         obj_path = os.path.join(save_dir, 'mesh.obj')
         mesh.write(obj_path)
@@ -566,23 +577,55 @@ class DLMesh(nn.Module):
             bg_color = bg_out
 
         # render
-        pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train)
-        rgb, normal, alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
-                                           mlp_texture=self.mlp_texture, is_train=is_train)
-        rgb = rgb * alpha + (1 - alpha) * bg_color
+        video = self.opt.video
+        if video:
+            frame_size = 3
+            rgb_frame_list = []
+            normal_frame_list = []
+            smplx_landmarks_frame_list = []
+            for i in range(frame_size):
+                pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train,frame_id=i)
+                rgb,normal,alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
+                                            mlp_texture=self.mlp_texture, is_train=is_train)
+                rgb = rgb * alpha + (1 - alpha) * bg_color
+                normal = normal * alpha + (1 - alpha) * bg_color
+                smplx_landmarks = torch.bmm(F.pad(smplx_landmarks, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0),
+                                            torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
+                smplx_landmarks = smplx_landmarks[..., :2] / smplx_landmarks[..., 2:3]
+                smplx_landmarks = smplx_landmarks * 0.5 + 0.5
+                rgb_frame_list.append(rgb)
+                normal_frame_list.append(normal)
+                smplx_landmarks_frame_list.append(smplx_landmarks)
+            rgbt = torch.stack(rgb_frame_list,dim=0)
+            normalt = torch.stack(normal_frame_list,dim=0)
+            smplx_landmarkst = torch.stack(smplx_landmarks_frame_list,dim=0)
+                
+        else:
+            pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train)
+            rgb, normal, alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
+                                            mlp_texture=self.mlp_texture, is_train=is_train)
+            rgb = rgb * alpha + (1 - alpha) * bg_color
 
-        normal = normal * alpha + (1 - alpha) * bg_color
+            normal = normal * alpha + (1 - alpha) * bg_color
 
 
-        # smplx landmarks
-        smplx_landmarks = torch.bmm(F.pad(smplx_landmarks, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0),
-                                    torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
-        smplx_landmarks = smplx_landmarks[..., :2] / smplx_landmarks[..., 2:3]
-        smplx_landmarks = smplx_landmarks * 0.5 + 0.5
-
-        return {
-            "image": rgb,
-            "alpha": alpha,
-            "normal": normal,
-            "smplx_landmarks": smplx_landmarks,
-        }
+            # smplx landmarks
+            smplx_landmarks = torch.bmm(F.pad(smplx_landmarks, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0),
+                                        torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
+            smplx_landmarks = smplx_landmarks[..., :2] / smplx_landmarks[..., 2:3]
+            smplx_landmarks = smplx_landmarks * 0.5 + 0.5
+        
+        if video:
+            return {
+                "video": rgbt,
+                "alpha_vid": alpha,
+                "normal_vid": normalt,
+                "smplx_landmarks_vid": smplx_landmarkst,
+            }
+        else:
+            return {
+                "image": rgb,
+                "alpha": alpha,
+                "normal": normal,
+                "smplx_landmarks": smplx_landmarks,
+            }

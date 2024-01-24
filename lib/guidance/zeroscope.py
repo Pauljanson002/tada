@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from transformers import CLIPTextModel, CLIPTokenizer, logging
-from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler, StableDiffusionPipeline
+from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler, DiffusionPipeline
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
-# from .perpneg_utils import weighted_perpendicular_aggregator
+from .perpneg_utils import weighted_perpendicular_aggregator
 
 
 class SpecifyGradient(torch.autograd.Function):
@@ -36,43 +36,50 @@ def seed_everything(seed):
     # torch.backends.cudnn.benchmark = True
 
 
-class StableDiffusion(nn.Module):
-    def __init__(self, device, fp16, vram_O, sd_version='2.1', hf_key=None, t_range=[0.02, 0.98],
-                 weighting_strategy='fantasia3d'):
+class ZeroScope(nn.Module):
+    def __init__(self, device, fp16, vram_O, t_range=[0.02, 0.98],
+                 weighting_strategy='sds'):
         super().__init__()
-
         self.device = device
-        self.sd_version = sd_version
         self.precision_t = torch.float16 if fp16 else torch.float32
         self.weighting_strategy = weighting_strategy
 
-        print(f'[INFO] loading stable diffusion...')
+        print(f'[INFO] loading zeroscope...')
 
-        if hf_key is not None:
-            print(f'[INFO] using hugging face custom model key: {hf_key}')
-            model_key = hf_key
-        elif self.sd_version == '2.1':
-            model_key = "stabilityai/stable-diffusion-2-1-base"
-        elif self.sd_version == '2.0':
-            model_key = "stabilityai/stable-diffusion-2-base"
-        elif self.sd_version == '1.5':
-            model_key = "runwayml/stable-diffusion-v1-5"
-        else:
-            raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
+        # if hf_key is not None:
+        #     print(f'[INFO] using hugging face custom model key: {hf_key}')
+        #     model_key = hf_key
+        # elif self.sd_version == '2.1':
+        #     model_key = "stabilityai/stable-diffusion-2-1-base"
+        # elif self.sd_version == '2.0':
+        #     model_key = "stabilityai/stable-diffusion-2-base"
+        # elif self.sd_version == '1.5':
+        #     model_key = "runwayml/stable-diffusion-v1-5"
+        # else:
+        #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
+        model_key = "cerspense/zeroscope_v2_576w"
+        pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
+        self.vae = pipe.vae.eval()
+        self.tokenizer = pipe.tokenizer
+        self.text_encoder = pipe.text_encoder
+        self.unet = pipe.unet.eval()
 
         # Create model
-        self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
-        self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
-        self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
-        self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
+        # self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
+        # self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
+        # self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
+        # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
-        self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
+        self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
+        #TODO SJC (DDPM scheudler)
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
+        
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-        print(f'[INFO] loaded stable diffusion!')
+        print(f'[INFO] loaded modelscope!')
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):
@@ -93,18 +100,21 @@ class StableDiffusion(nn.Module):
 
         return text_embeddings
 
-    def train_step(self, text_embeddings, pred_rgb, guidance_scale=100, rgb_as_latents=False):
+    def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False): # pred_rgbt: [F, 3, H, W]
         if rgb_as_latents:
-            latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False)
+            latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
             latents = latents * 2 - 1
         else:
-            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
-            latents = self.encode_imgs(pred_rgb_512)
-        latents = torch.mean(latents, keepdim=True, dim=0) # does nothing specific
+            pred_rgbt = F.interpolate(pred_rgbt, (320, 576), mode='bilinear', align_corners=False)
+            pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
+            latents = self.encode_imgs(pred_rgbt)
+
+        # Before : latents = torch.mean(latents, keepdim=True, dim=0)
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
 
+        # TODO: SJC not implemented need to check what it is and whether it helps 
         # _t = time.time()
         with torch.no_grad():
             # add noise
@@ -132,7 +142,10 @@ class StableDiffusion(nn.Module):
 
         grad = w * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
-
+        
+        # TODO: Do we need gradient clipping ? 
+        # if grad clip
+        # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
         loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
 
@@ -243,15 +256,65 @@ class StableDiffusion(nn.Module):
 
         return imgs
 
-    def encode_imgs(self, imgs):
-        # imgs: [B, 3, H, W]
-        imgs = 2 * imgs - 1
-        posterior = self.vae.encode(imgs).latent_dist
+    @torch.cuda.amp.autocast(enabled=False)
+    def encode_imgs(self, imgs,normalize = True):
+        # imgs: [B, 3,F, H, W]
+        if len(imgs.shape) == 4:
+            print("Image is provided instead of a video adding time = 1")
+            imgs = imgs[:,:,None]
+            
+        batch_size,channels, num_frames,height , width = imgs.shape
+        
+        imgs = imgs.permute(0,2,1,3,4).reshape(batch_size*num_frames,channels,height,width)
+        input_dtype = imgs.dtype
+        
+        if normalize:
+            imgs = 2 * imgs - 1
+
+        posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
         latents = posterior.sample() * self.vae.config.scaling_factor
 
-        return latents
+        latents = (
+            latents[None, :]
+            .reshape(
+                (
+                    batch_size,
+                    num_frames,
+                    -1,
+                )
+                + latents.shape[2:]
+            )
+            .permute(0, 2, 1, 3, 4)
+        )
+        return latents.to(input_dtype)
+    
+    @torch.cuda.amp.autocast(enabled=False)
+    def decode_latents(self, latents):
+        # TODO: Make decoding align with previous version
+        latents = 1 / self.vae.config.scaling_factor * latents
 
-    def prompt_to_img(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,
+        batch_size, channels, num_frames, height, width = latents.shape
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+
+        image = self.vae.decode(latents).sample
+        video = (
+            image[None, :]
+            .reshape(
+                (
+                    batch_size,
+                    num_frames,
+                    -1,
+                )
+                + image.shape[2:]
+            )
+            .permute(0, 2, 1, 3, 4)
+        )
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        video = video.float()
+        return video
+    
+
+    def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,
                       guidance_scale=7.5, latents=None):
 
         if isinstance(prompts, str):
@@ -283,12 +346,13 @@ class StableDiffusion(nn.Module):
 if __name__ == '__main__':
     import argparse
     import matplotlib.pyplot as plt
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--prompt', type=str)
     parser.add_argument('--negative', default='bad anatomy', type=str)
-    parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'],
-                        help="stable diffusion version")
-    parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
+    # parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'],
+    #                     help="stable diffusion version")
+    # parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
     parser.add_argument('-H', type=int, default=512)
     parser.add_argument('-W', type=int, default=512)
     parser.add_argument('--seed', type=int, default=0)
@@ -299,7 +363,7 @@ if __name__ == '__main__':
 
     device = torch.device('cuda')
 
-    sd = StableDiffusion(device, opt.sd_version, opt.hf_key)
+    sd = ZeroScope(device, opt.sd_version, opt.hf_key)
 
     subjects = open("./data/prompt/fictional.txt", 'r').read().splitlines()[:5]
     # opt.negative
