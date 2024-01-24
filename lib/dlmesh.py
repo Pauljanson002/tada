@@ -93,7 +93,7 @@ class DLMesh(nn.Module):
             smplx_params = dict(np.load(param_file))
             self.betas = torch.as_tensor(smplx_params["betas"]).to(self.device)
             self.jaw_pose = torch.as_tensor(smplx_params["jaw_pose"]).to(self.device)
-            
+            self.num_frames = 3
             self.body_pose = torch.as_tensor(smplx_params["body_pose"]).to(self.device)
             self.body_pose = self.body_pose.view(-1, 3)
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
@@ -113,7 +113,7 @@ class DLMesh(nn.Module):
                         self.full_pose_6d = torch.zeros(self.init_full_pose_6d.shape).to(self.device) 
                     else:
                         self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
-                        self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([3,1])
+                        self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([self.num_frames,1])
                         self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
                         self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
                         
@@ -579,7 +579,7 @@ class DLMesh(nn.Module):
         # render
         video = self.opt.video
         if video:
-            frame_size = 3
+            frame_size = self.num_frames
             rgb_frame_list = []
             normal_frame_list = []
             smplx_landmarks_frame_list = []

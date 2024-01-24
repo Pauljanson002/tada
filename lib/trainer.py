@@ -481,7 +481,8 @@ class Trainer(object):
                 else:
                     pred = preds.detach().cpu().numpy()
                     pred = (pred * 255).astype(np.uint8)
-                    pred = np.concatenate(pred, axis=0)
+                    pred = pred.transpose(1,0,2,3)
+                    pred = pred.reshape(pred.shape[0], -1, pred.shape[3])
                 if write_video:
                     all_preds.append(pred)
                 else:
@@ -553,7 +554,7 @@ class Trainer(object):
                 else:
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.mp4')
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                    imageio.mimwrite(save_path, pred_rgbs , fps=1, quality=5, macro_block_size=1)
+                    imageio.mimwrite(save_path, pred_rgbs , fps=3, quality=5, macro_block_size=1)
             if self.write_train_video:
                 if not video:
                     pred_rgb_only = pred_rgbs[:,:512, :]
