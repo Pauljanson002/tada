@@ -280,7 +280,6 @@ class Trainer(object):
             video_frames = video_frames.permute(0, 3, 1, 2)
             normal_frames = normal_frames.permute(0, 3, 1, 2)
             alpha_frames = alpha_frames.permute(0, 3, 1, 2)
-            loss = self.guidance.train_step(dir_text_z, video_frames).mean() # [F,C,H,W]
             pred = video_frames_np
             
 

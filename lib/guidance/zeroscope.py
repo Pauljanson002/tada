@@ -79,8 +79,6 @@ class ZeroScope(nn.Module):
         
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-        print(f'[INFO] loaded modelscope!')
-
     @torch.no_grad()
     def get_text_embeds(self, prompt):
         """

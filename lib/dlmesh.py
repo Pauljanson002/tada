@@ -93,7 +93,7 @@ class DLMesh(nn.Module):
             smplx_params = dict(np.load(param_file))
             self.betas = torch.as_tensor(smplx_params["betas"]).to(self.device)
             self.jaw_pose = torch.as_tensor(smplx_params["jaw_pose"]).to(self.device)
-            self.num_frames = 3
+            self.num_frames = opt.num_frames
             self.body_pose = torch.as_tensor(smplx_params["body_pose"]).to(self.device)
             self.body_pose = self.body_pose.view(-1, 3)
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0

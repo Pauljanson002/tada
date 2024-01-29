@@ -78,6 +78,7 @@ model:
   replace_hands_eyes: True
   ssaa: 2
   video: False
+  num_frames: 3
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'
