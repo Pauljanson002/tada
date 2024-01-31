@@ -644,6 +644,8 @@ class Trainer(object):
 
             for i,data in enumerate(loader):
                 self.local_step += 1
+                if i != self.epoch % 100:
+                    continue
 
                 # with torch.cuda.amp.autocast(enabled=self.fp16):
                 preds, loss = self.eval_step(data)
@@ -679,11 +681,10 @@ class Trainer(object):
                         pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
                         self.train_video_frames.append(pred_rgb_resized)
                     else:
-                        if i == self.epoch % 100:
-                            pred_np = (pred * 255).astype(np.uint8)
-                            t_pred = pred_np.transpose(1,0,2,3)
-                            t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
-                            self.train_video_frames.append(t_pred)
+                        pred_np = (pred * 255).astype(np.uint8)
+                        t_pred = pred_np.transpose(1,0,2,3)
+                        t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
+                        self.train_video_frames.append(t_pred)
                         
         if not self.model.opt.video:
             save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
