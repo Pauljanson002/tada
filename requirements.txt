@@ -24,3 +24,4 @@ transformers==4.35.2
 trimesh
 xatlas==0.0.8
 yacs==0.1.8
+hydra-colorlog==1.2.0
