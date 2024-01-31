@@ -53,6 +53,7 @@ class Trainer(object):
         self.action = action
         self.negative = negative
         self.dir_text = dir_text
+        self.context = "beach"
         self.opt = opt
         self.mute = mute
         self.metrics = metrics
@@ -181,26 +182,25 @@ class Trainer(object):
         if self.action is not None:
             self.text_embeds = {
                 'uncond': self.guidance.get_text_embeds([self.negative]),
-                'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text} {self.action}, full-body"]),
+                'default': self.guidance.get_text_embeds([f"a shot of a {self.text} {self.action} in the {self.context}"]),
             }
         else:
             self.text_embeds = {
                 'uncond': self.guidance.get_text_embeds([self.negative]),
-                'default': self.guidance.get_text_embeds([f"a 3D rendering of {self.text}, full-body"]),
+                'default': self.guidance.get_text_embeds([f"a shot of a {self.subject}"]),
             }
 
         if self.opt.train_face_ratio < 1:
             if self.action is not None:
                 self.text_embeds['body'] = {
-                    d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text} {self.action}, full-body"])
+                    d: self.guidance.get_text_embeds([f"a shot of {d} view of a {self.text} {self.action} in the {self.context}"])
                     for d in ['front', 'side', 'back', "overhead"]
                 }
             else:
                 self.text_embeds['body'] = {
-                    d: self.guidance.get_text_embeds([f"a {d} view 3D rendering of {self.text}, full-body"])
+                    d: self.guidance.get_text_embeds([f"a shot of {d} view of a {self.text} in the {self.context}"])
                     for d in ['front', 'side', 'back', "overhead"]
                 }
-
         if self.opt.train_face_ratio > 0:
             id_text = self.text.split("wearing")[0]
             self.text_embeds['face'] = {
@@ -356,7 +356,7 @@ class Trainer(object):
             pred = out["video"].squeeze(1)
 
         # dummy 
-        loss = torch.zeros([1], device=pred.device, dtype=pred.dtype)
+        loss = torch.zeros([1], device=self.device, dtype=torch.float32)
 
         return pred, loss
 
@@ -525,7 +525,7 @@ class Trainer(object):
                              bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         video = self.model.opt.video
         self.local_step = 0
-
+        temp_grads = []
         for data in loader:
 
             # if data["dirkey"][0] in ["side","back","overhead"]:
@@ -554,22 +554,10 @@ class Trainer(object):
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.mp4')
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     imageio.mimwrite(save_path, pred_rgbs , fps=3, quality=5, macro_block_size=1)
-            if self.write_train_video:
-                if not video:
-                    pred_rgb_only = pred_rgbs[:,:512, :]
-                    pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
-                    self.train_video_frames.append(pred_rgb_resized)
-                else:
-                    t_pred = pred_rgbs.transpose(1,0,2,3)
-                    t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
-                    self.train_video_frames.append(t_pred)
 
             self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            temp_grads.append(self.model.body_pose_6d_set.grad)
 
-            if self.scheduler_update_every_step:
-                self.lr_scheduler.step()
 
             loss_val = loss.item()
             total_loss += loss_val
@@ -586,8 +574,25 @@ class Trainer(object):
                 else:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
                 pbar.update(loader.batch_size)
-            if self.opt.debug:
-                break
+            # if self.opt.debug:
+            #     break
+        
+        #! Added by PJ , Its a workaround 
+        #TODO : Find a permanent solution
+        # Normalize the gradient by the number of steps
+        temp_grads = sum(temp_grads)
+        for p in self.model.parameters():
+            if p.grad is not None:
+                p.grad = p.grad / self.local_step
+        
+        
+        
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+
+        if self.scheduler_update_every_step:
+            self.lr_scheduler.step()
+
 
         if self.ema is not None:
             self.ema.update()
@@ -637,7 +642,7 @@ class Trainer(object):
         with torch.no_grad():
             self.local_step = 0
 
-            for data in loader:
+            for i,data in enumerate(loader):
                 self.local_step += 1
 
                 # with torch.cuda.amp.autocast(enabled=self.fp16):
@@ -668,6 +673,17 @@ class Trainer(object):
                         pred = preds.detach().cpu().numpy()
                         pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
                         pbar.update(loader.batch_size)
+                if self.write_train_video:
+                    if not self.model.opt.video:
+                        pred_rgb_only = preds[:,:512, :]
+                        pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
+                        self.train_video_frames.append(pred_rgb_resized)
+                    else:
+                        if i == self.epoch % 100:
+                            pred_np = (pred * 255).astype(np.uint8)
+                            t_pred = pred_np.transpose(1,0,2,3)
+                            t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
+                            self.train_video_frames.append(t_pred)
                         
         if not self.model.opt.video:
             save_path = os.path.join(self.workspace, 'validation', f'{name}.png')

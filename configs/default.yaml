@@ -4,7 +4,7 @@ stage: "geo"
 fp16: False
 text: ""
 action: "sitting"
-negative: ""
+negative: "unrealistic,ugly,bad anatomy,not real,not realistic,not human,not a person,not a human"
 test: False
 save_mesh: True
 guidance:
@@ -39,8 +39,8 @@ training:
 data:
   h: 512
   w: 512
-  H: 800
-  W: 800
+  H: 512
+  W: 512
   near: 0.01
   far: 1000
   fovy_range: [50, 70]

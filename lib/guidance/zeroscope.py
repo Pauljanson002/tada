@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
-from .perpneg_utils import weighted_perpendicular_aggregator
+
 
 
 class SpecifyGradient(torch.autograd.Function):
@@ -216,11 +216,11 @@ class ZeroScope(nn.Module):
 
         return loss
 
-    def produce_latents(self, text_embeddings, height=512, width=512, num_inference_steps=50, guidance_scale=7.5,
+    def produce_latents(self, text_embeddings, height=320, width=576, num_inference_steps=40, guidance_scale=100,num_frames=5,
                         latents=None):
 
         if latents is None:
-            latents = torch.randn((text_embeddings.shape[0] // 2, self.unet.in_channels, height // 8, width // 8),
+            latents = torch.randn((text_embeddings.shape[0] // 2, self.unet.in_channels, num_frames, height // 8, width // 8),
                                   device=self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
@@ -312,7 +312,7 @@ class ZeroScope(nn.Module):
         return video
     
 
-    def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,
+    def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,num_frames=5,
                     guidance_scale=7.5, latents=None):
 
         if isinstance(prompts, str):
@@ -327,7 +327,7 @@ class ZeroScope(nn.Module):
         text_embeds = torch.cat([uncon_embeds, text_embeds])
 
         # Text embeds -> img latents
-        latents = self.produce_latents(text_embeds, height=height, width=width, latents=latents,
+        latents = self.produce_latents(text_embeds, height=height, width=width, latents=latents,num_frames=num_frames,
                                     num_inference_steps=num_inference_steps,
                                     guidance_scale=guidance_scale)  # [1, 4, 64, 64]
 
@@ -346,37 +346,29 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prompt', type=str)
+    parser.add_argument('--subject', type=str, default="man")
+    parser.add_argument('--action', default='bad anatomy', type=str)
     parser.add_argument('--negative', default='bad anatomy', type=str)
     # parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'],
     #                     help="stable diffusion version")
     # parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
-    parser.add_argument('-H', type=int, default=512)
-    parser.add_argument('-W', type=int, default=512)
+    parser.add_argument('-H', type=int, default=320)
+    parser.add_argument('-W', type=int, default=576)
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--steps', type=int, default=50)
+    parser.add_argument('--steps', type=int, default=40)
     opt = parser.parse_args()
 
     seed_everything(opt.seed)
 
     device = torch.device('cuda')
-
-    sd = ZeroScope(device, opt.sd_version, opt.hf_key)
-
-    subjects = open("./data/prompt/fictional.txt", 'r').read().splitlines()[:5]
+    zs = ZeroScope(device,False,True)
+    
+    for view in ["front", "back", "side"]:
+        prompt = f"a {view} view 3D rendering of {opt.subject} {opt.action}, full-body"
+        vid = zs.prompt_to_video(prompt, height=opt.H, width=opt.W, num_inference_steps=opt.steps)[0]
+        breakpoint()
     # opt.negative
-    imgs = [
-        np.vstack([
-            sd.prompt_to_img(f"a 3D rendering of the mouth of {prompt}, {v}", opt.negative, opt.H, opt.W, opt.steps)[0]
-            for v in ["front view"
-                      # "back view", "side view",
-                      # "overhead view"
-                      ]
-        ])
-        for prompt in subjects
-    ]
-
-    cv2.imwrite("superman.png", np.hstack(imgs)[..., ::-1])
+    
 
     # visualize image
     # plt.imshow(imgs[0])

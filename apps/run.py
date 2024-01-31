@@ -16,7 +16,12 @@ torch.autograd.set_detect_anomaly(True)
 def main(cfg):
     # cfg = argparse.Namespace(**OmegaConf.to_container(cfg))
     # cfg.freeze()
-    print(OmegaConf.to_yaml(cfg))
+    hydra_singleton = hydra.core.hydra_config.HydraConfig.get()
+    if str(hydra_singleton.mode) == "RunMode.MULTIRUN":
+        cfg.name = f"{cfg.name}_{hydra_singleton.job.id}"
+        cfg.training.workspace = hydra_singleton.sweep.dir
+    else:
+        cfg.training.workspace  = hydra_singleton.run.dir
     # save config to workspace
     os.makedirs(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action), exist_ok=True)
     with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action,"config.yaml"), 'w') as f:
@@ -29,7 +34,7 @@ def main(cfg):
             phase: str one of ['train', 'test' 'val']
         Returns:
         """
-        size = 4 if phase == 'val' else 4
+        size = 4 if phase == 'train' else 100
         dataset = ViewDataset(cfg.data, device=device, type=phase, size=size)
         return DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
