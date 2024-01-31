@@ -148,7 +148,6 @@ class Trainer(object):
         self.log(
             f'[INFO] Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
         self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
-
         if self.workspace is not None:
             if self.use_checkpoint == "scratch":
                 self.log("[INFO] Training from scratch ...")
@@ -557,6 +556,12 @@ class Trainer(object):
 
             self.scaler.scale(loss).backward()
             temp_grads.append(self.model.body_pose_6d_set.grad)
+            
+            if not self.opt.accumulate:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                if self.scheduler_update_every_step:
+                    self.lr_scheduler.step()
 
 
             loss_val = loss.item()
@@ -580,18 +585,16 @@ class Trainer(object):
         #! Added by PJ , Its a workaround 
         #TODO : Find a permanent solution
         # Normalize the gradient by the number of steps
-        temp_grads = sum(temp_grads)
-        for p in self.model.parameters():
-            if p.grad is not None:
-                p.grad = p.grad / self.local_step
-        
-        
-        
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+        if self.opt.accumulate:
+            temp_grads = sum(temp_grads)
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    p.grad = p.grad / self.local_step
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-        if self.scheduler_update_every_step:
-            self.lr_scheduler.step()
+            if self.scheduler_update_every_step:
+                self.lr_scheduler.step()
 
 
         if self.ema is not None:

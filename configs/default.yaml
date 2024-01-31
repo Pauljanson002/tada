@@ -36,6 +36,7 @@ training:
   rgb_sds: True
   normal_sds: True
   mean_sds: True
+  accumulate: True
 data:
   h: 512
   w: 512
