@@ -20,6 +20,7 @@ import wandb
 from lib.common.utils import *
 from lib.dpt import DepthNormalEstimation
 import wandb
+import logging
 class Trainer(object):
     def __init__(self,
                 name,  # name of this experiment
@@ -45,7 +46,6 @@ class Trainer(object):
                 use_tensorboardX=True,  # whether to use tensorboard for logging
                 scheduler_update_every_step=False,  # whether to call scheduler.step() after every train step
                 ):
-
         self.dpt = DepthNormalEstimation(use_depth=False) if opt.use_dpt else None
         self.default_view_data = None
         self.name = name
@@ -135,6 +135,7 @@ class Trainer(object):
             self.best_mode = 'min'
 
         # workspace prepare
+        self.logger = logging.getLogger(__name__)
         self.log_ptr = None
         if self.workspace is not None:
             os.makedirs(self.workspace, exist_ok=True)
@@ -145,27 +146,27 @@ class Trainer(object):
             self.best_path = f"{self.ckpt_path}/{self.name}.pth"
             os.makedirs(self.ckpt_path, exist_ok=True)
 
-        self.log(
-            f'[INFO] Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
-        self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
+        self.logger.info(
+            f' Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
+        self.logger.info(f' #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
         if self.workspace is not None:
             if self.use_checkpoint == "scratch":
-                self.log("[INFO] Training from scratch ...")
+                self.logger.info(" Training from scratch ...")
             elif self.use_checkpoint == "latest":
-                self.log("[INFO] Loading latest checkpoint ...")
+                self.logger.info(" Loading latest checkpoint ...")
                 self.load_checkpoint()
             elif self.use_checkpoint == "latest_model":
-                self.log("[INFO] Loading latest checkpoint (model only)...")
+                self.logger.info(" Loading latest checkpoint (model only)...")
                 self.load_checkpoint(model_only=True)
             elif self.use_checkpoint == "best":
                 if os.path.exists(self.best_path):
-                    self.log("[INFO] Loading best checkpoint ...")
+                    self.logger.info(" Loading best checkpoint ...")
                     self.load_checkpoint(self.best_path)
                 else:
-                    self.log(f"[INFO] {self.best_path} not found, loading latest ...")
+                    self.logger.info(f" {self.best_path} not found, loading latest ...")
                     self.load_checkpoint()
             else:  # path to ckpt
-                self.log(f"[INFO] Loading {self.use_checkpoint} ...")
+                self.logger.info(f" Loading {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
                 
         self.train_video_frames = []
@@ -175,7 +176,7 @@ class Trainer(object):
     #Show : Text embeddings
     def prepare_text_embeddings(self):
         if self.text is None:
-            self.log(f"[WARN] text prompt is not provided.")
+            self.logger.warning(f" text prompt is not provided.")
             return
 
         if self.action is not None:
@@ -211,14 +212,14 @@ class Trainer(object):
         if self.log_ptr:
             self.log_ptr.close()
 
-    def log(self, *args, **kwargs):
-        if self.local_rank == 0:
-            if not self.mute:
-                # print(*args)
-                self.console.print(*args, **kwargs)
-            if self.log_ptr:
-                print(*args, file=self.log_ptr)
-                self.log_ptr.flush()  # write immediately to file
+    # def log(self, *args, **kwargs):
+    #     if self.local_rank == 0:
+    #         if not self.mute:
+    #             # print(*args)
+    #             self.console.print(*args, **kwargs)
+    #         if self.log_ptr:
+    #             print(*args, file=self.log_ptr)
+    #             self.log_ptr.flush()  # write immediately to file
 
     def train_step(self, data, is_full_body):
         do_rgbd_loss = self.default_view_data is not None and (self.global_step % self.opt.known_view_interval == 0)
@@ -380,13 +381,13 @@ class Trainer(object):
         if save_path is None:
             save_path = os.path.join(self.workspace, "mesh")
 
-        self.log(f"==> Saving mesh to {save_path}")
+        self.logger.info(f"==> Saving mesh to {save_path}")
 
         os.makedirs(save_path, exist_ok=True)
 
         self.model.export_mesh(save_path)
 
-        self.log(f"==> Finished saving mesh.")
+        self.logger.info(f"==> Finished saving mesh.")
 
     def train(self, train_loader, valid_loader, max_epochs):
         
@@ -432,12 +433,12 @@ class Trainer(object):
 
         end_t = time.time()
 
-        self.log(f"[INFO] training takes {(end_t - start_t) / 60:.4f} minutes.")
+        self.logger.info(f" training takes {(end_t - start_t) / 60:.4f} minutes.")
         if self.write_train_video:
             all_preds = np.stack(self.train_video_frames, axis=0)
             imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
                             macro_block_size=1)
-            self.log(f"==> Finished writing train video.")
+            self.logger.info(f"==> Finished writing train video.")
 
         
         if self.use_tensorboardX and self.local_rank == 0:
@@ -458,7 +459,7 @@ class Trainer(object):
 
         os.makedirs(save_path, exist_ok=True)
 
-        self.log(f"==> Start Test, save results to {save_path}")
+        self.logger.info(f"==> Start Test, save results to {save_path}")
 
         pbar = tqdm.tqdm(total=len(loader) * loader.batch_size,
                         bar_format='{percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
@@ -501,10 +502,10 @@ class Trainer(object):
                 imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=5,
                                 macro_block_size=1)
 
-        self.log(f"==> Finished Test.")
+        self.logger.info(f"==> Finished Test.")
 
     def train_one_epoch(self, loader):
-        self.log(
+        self.logger.info(
             f"==> Start Training {self.workspace} Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
 
         total_loss = 0
@@ -607,7 +608,7 @@ class Trainer(object):
             pbar.close()
             if self.report_metric_at_train:
                 for metric in self.metrics:
-                    self.log(metric.report(), style="red")
+                    self.logger.info(metric.report(), style="red")
                     if self.use_tensorboardX:
                         metric.write(self.writer, self.epoch, prefix="train")
                     metric.clear()
@@ -618,10 +619,10 @@ class Trainer(object):
             else:
                 self.lr_scheduler.step()
 
-        self.log(f"==> Finished Epoch {self.epoch}.")
+        self.logger.info(f"==> Finished Epoch {self.epoch}.")
 
     def evaluate_one_epoch(self, loader, name=None):
-        self.log(f"++> Evaluate {self.workspace} at epoch {self.epoch} ...")
+        self.logger.info(f"++> Evaluate {self.workspace} at epoch {self.epoch} ...")
 
         if name is None:
             name = f'ep{self.epoch:04d}'
@@ -717,7 +718,7 @@ class Trainer(object):
                 self.stats["results"].append(average_loss)  # if no metric, choose best by min loss
 
             for metric in self.metrics:
-                self.log(metric.report(), style="blue")
+                self.logger.info(metric.report(), style="blue")
                 if self.use_tensorboardX:
                     metric.write(self.writer, self.epoch, prefix="evaluate")
                 metric.clear()
@@ -725,7 +726,7 @@ class Trainer(object):
         if self.ema is not None:
             self.ema.restore()
 
-        self.log(f"++> Evaluate epoch {self.epoch} Finished.")
+        self.logger.info(f"++> Evaluate epoch {self.epoch} Finished.")
 
     def save_checkpoint(self, name=None, full=False, best=False):
 
@@ -764,7 +765,7 @@ class Trainer(object):
             if len(self.stats["results"]) > 0:
                 # always save best since loss cannot reflect performance.
                 if True:
-                    # self.log(f"[INFO] New best result: {self.stats['best_result']} --> {self.stats['results'][-1]}")
+                    # self.logger.info(f" New best result: {self.stats['best_result']} --> {self.stats['results'][-1]}")
                     # self.stats["best_result"] = self.stats["results"][-1]
 
                     # save ema results 
@@ -779,38 +780,38 @@ class Trainer(object):
 
                     torch.save(state, self.best_path)
             else:
-                self.log(f"[WARN] no evaluated results found, skip saving best checkpoint.")
+                self.logger.warning(f" no evaluated results found, skip saving best checkpoint.")
 
     def load_checkpoint(self, checkpoint=None, model_only=False):
         if checkpoint is None:
             checkpoint_list = sorted(glob.glob(f'{self.ckpt_path}/{self.name}*.pth'))
             if checkpoint_list:
                 checkpoint = checkpoint_list[-1]
-                self.log(f"[INFO] Latest checkpoint is {checkpoint}")
+                self.logger.info(f" Latest checkpoint is {checkpoint}")
             else:
-                self.log("[WARN] No checkpoint found, model randomly initialized.")
+                self.logger.info(" No checkpoint found, model randomly initialized.")
                 return
 
         checkpoint_dict = torch.load(checkpoint, map_location=self.device)
 
         if 'model' not in checkpoint_dict:
             self.model.load_state_dict(checkpoint_dict)
-            self.log("[INFO] loaded model.")
+            self.logger.info(" loaded model.")
             return
 
         missing_keys, unexpected_keys = self.model.load_state_dict(checkpoint_dict['model'], strict=False)
-        self.log("[INFO] loaded model.")
+        self.logger.info(" loaded model.")
         if len(missing_keys) > 0:
-            self.log(f"[WARN] missing keys: {missing_keys}")
+            self.logger.info(f" missing keys: {missing_keys}")
         if len(unexpected_keys) > 0:
-            self.log(f"[WARN] unexpected keys: {unexpected_keys}")
+            self.logger.info(f" unexpected keys: {unexpected_keys}")
 
         if self.ema is not None and 'ema' in checkpoint_dict:
             try:
                 self.ema.load_state_dict(checkpoint_dict['ema'])
-                self.log("[INFO] loaded EMA.")
+                self.logger.info(" loaded EMA.")
             except:
-                self.log("[WARN] failed to loaded EMA.")
+                self.logger.info(" failed to loaded EMA.")
 
         if model_only:
             return
@@ -818,25 +819,25 @@ class Trainer(object):
         self.stats = checkpoint_dict['stats']
         self.epoch = checkpoint_dict['epoch']
         self.global_step = checkpoint_dict['global_step']
-        self.log(f"[INFO] load at epoch {self.epoch}, global step {self.global_step}")
+        self.logger.info(f" load at epoch {self.epoch}, global step {self.global_step}")
 
         if self.optimizer and 'optimizer' in checkpoint_dict:
             try:
                 self.optimizer.load_state_dict(checkpoint_dict['optimizer'])
-                self.log("[INFO] loaded optimizer.")
+                self.logger.info(" loaded optimizer.")
             except:
-                self.log("[WARN] Failed to load optimizer.")
+                self.logger.warning(" Failed to load optimizer.")
 
         if self.lr_scheduler and 'lr_scheduler' in checkpoint_dict:
             try:
                 self.lr_scheduler.load_state_dict(checkpoint_dict['lr_scheduler'])
-                self.log("[INFO] loaded scheduler.")
+                self.logger.info(" loaded scheduler.")
             except:
-                self.log("[WARN] Failed to load scheduler.")
+                self.logger.warning(" Failed to load scheduler.")
 
         if self.scaler and 'scaler' in checkpoint_dict:
             try:
                 self.scaler.load_state_dict(checkpoint_dict['scaler'])
-                self.log("[INFO] loaded scaler.")
+                self.logger.info(" loaded scaler.")
             except:
-                self.log("[WARN] Failed to load scaler.")
+                self.logger.warning(" Failed to load scaler.")
