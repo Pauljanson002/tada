@@ -34,7 +34,7 @@ def main(cfg):
             phase: str one of ['train', 'test' 'val']
         Returns:
         """
-        size = 4 if phase == 'train' else 100
+        size = 100 if phase == 'val' else 4
         dataset = ViewDataset(cfg.data, device=device, type=phase, size=size)
         return DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 

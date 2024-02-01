@@ -1,7 +1,5 @@
 defaults:
   - _self_
-  - override hydra/job_logging: colorlog
-  - override hydra/hydra_logging: colorlog
 name: 'default'
 seed: 2222
 stage: "geo"
@@ -41,6 +39,7 @@ training:
   normal_sds: True
   mean_sds: True
   accumulate: True
+  regularize_coeff: 0.0 
 data:
   h: 512
   w: 512
@@ -82,8 +81,8 @@ model:
   init_empty_tex: True
   replace_hands_eyes: True
   ssaa: 2
-  video: False
-  num_frames: 3
+  video: True
+  num_frames: 14
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'

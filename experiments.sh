@@ -1,3 +1,3 @@
-CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action=running wandb_mode="online" name=action__model_change_True_full_pose_False_action_running model.model_change=True model.use_full_pose=False
-CUDA_VISIBLE_DEVICES=1 python -m apps.run text="man" action=sitting wandb_mode="online" name=action__model_change_True_full_pose_False_action_sitting model.model_change=True model.use_full_pose=False
-CUDA_VISIBLE_DEVICES=0 python -m apps.run text="man" action=jumping wandb_mode="online" name=action__model_change_True_full_pose_False_action_jumping model.model_change=True model.use_full_pose=False
+CUDA_VISIBLE_DEVICES=1 python -m apps.run --multirun text="man" action="running" wandb_mode="disabled" name=reg_acc_t training.debug=False guidance.name=zeroscope model.video=True model.num_frames=14 training.iters=1000 training.accumulate=True training.regularize_coeff=1000,100,10,1,0.1
+CUDA_VISIBLE_DEVICES=2 python -m apps.run --multirun text="man" action="running" wandb_mode="disabled" name=reg_acc_f training.debug=False guidance.name=zeroscope model.video=True model.num_frames=14 training.iters=1000 training.accumulate=False training.regularize_coeff=1000,100,10,1,0.1
+
