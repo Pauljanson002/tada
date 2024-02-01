@@ -1,7 +1,5 @@
 defaults:
   - _self_
-  - override hydra/job_logging: colorlog
-  - override hydra/hydra_logging: colorlog
 name: 'default'
 seed: 2222
 stage: "geo"
