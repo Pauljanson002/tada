@@ -83,8 +83,8 @@ model:
   init_empty_tex: True
   replace_hands_eyes: True
   ssaa: 2
-  video: False
-  num_frames: 3
+  video: True
+  num_frames: 14
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'
