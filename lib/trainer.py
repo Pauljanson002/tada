@@ -287,6 +287,10 @@ class Trainer(object):
                 loss = self.guidance.train_step(dir_text_z, video_frames).mean()
             else:
                 loss = 0
+                
+            if self.opt.regularize_coeff > 0:
+                regularization_term = torch.mean(torch.abs(self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]))
+                loss += self.opt.regularize_coeff * regularization_term
             
             # TODO: Implement normal sds
             # if self.opt.normal_sds:
@@ -480,8 +484,8 @@ class Trainer(object):
                 else:
                     pred = preds.detach().cpu().numpy()
                     pred = (pred * 255).astype(np.uint8)
-                    pred = pred.transpose(1,0,2,3)
-                    pred = pred.reshape(pred.shape[0], -1, pred.shape[3])
+                    # pred = pred.transpose(1,0,2,3)
+                    # pred = pred.reshape(pred.shape[0], -1, pred.shape[3])
                 if write_video:
                     all_preds.append(pred)
                 else:
@@ -498,9 +502,9 @@ class Trainer(object):
                 imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=9,
                                 macro_block_size=1)
             else:
-                all_preds = np.stack(all_preds, axis=0)
-                imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=5,
-                                macro_block_size=1)
+                for i in range(len(all_preds)):
+                    imageio.mimwrite(os.path.join(save_path, f'{name}_view_{i}.mp4'), all_preds[i], fps=5, quality=5,
+                                    macro_block_size=1)
 
         self.logger.info(f"==> Finished Test.")
 

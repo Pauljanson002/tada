@@ -41,6 +41,7 @@ training:
   normal_sds: True
   mean_sds: True
   accumulate: True
+  regularize_coeff: 0.0 
 data:
   h: 512
   w: 512
