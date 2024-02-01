@@ -1,0 +1,31 @@
+defaults:
+  - tada_wo_dpt
+  - _self_
+  - override hydra/launcher: submitit_slurm
+
+hydra:
+  launcher:
+    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    timeout_min: 300
+    cpus_per_task: 4
+    gpus_per_node: 1
+    tasks_per_node: 2
+    mem_gb: 100
+    nodes: 1
+    name: ${hydra.job.name}
+    _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+    partition: null
+    qos: null
+    comment: null
+    constraint: null
+    exclude: null
+    gres: null
+    cpus_per_gpu: null
+    gpus_per_task: null
+    account: rrg-eugenium
+    signal_delay_s: 120
+    max_num_timeout: 0
+    additional_parameters: {}
+    array_parallelism: 12
+    setup: null
+

@@ -5,7 +5,7 @@ from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMSc
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
-
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,8 +57,14 @@ class ZeroScope(nn.Module):
         #     model_key = "runwayml/stable-diffusion-v1-5"
         # else:
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
-        model_key = "cerspense/zeroscope_v2_576w"
-        pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
+        if "SLURM_JOB_ID" in os.environ:
+            model_key = "cerspense/zeroscope_v2_576w"
+            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
+            self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
+        else:
+            model_key = "cerspense/zeroscope_v2_576w"
+            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t)
+            self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
         self.vae = pipe.vae.eval()
         self.tokenizer = pipe.tokenizer
         self.text_encoder = pipe.text_encoder
@@ -70,7 +76,7 @@ class ZeroScope(nn.Module):
         # self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
         # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
-        self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
+        
         #TODO SJC (DDPM scheudler)
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])

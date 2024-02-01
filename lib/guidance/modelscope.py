@@ -5,7 +5,7 @@ from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMSc
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
-
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -59,8 +59,13 @@ class ModelScope(nn.Module):
         #     model_key = "runwayml/stable-diffusion-v1-5"
         # else:
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
-        model_key = "cerspense/zeroscope_v2_576w"
-        pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=torch.float16)
+        
+        if "SLURM_JOB_ID" in os.environ:
+            model_key = "/home/janson2/.cache/huggingface/hub/models--cerspense--zeroscope_v2_576w"
+            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=torch.float16,local_files_only=True)
+        else:
+            model_key = "cerspense/zeroscope_v2_576w"
+            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=torch.float16)
         self.vae = pipe.vae
         self.tokenizer = pipe.tokenizer
         self.text_encoder = pipe.text_encoder
