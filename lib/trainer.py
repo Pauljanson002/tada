@@ -289,7 +289,8 @@ class Trainer(object):
                 loss = 0
                 
             if self.opt.regularize_coeff > 0:
-                regularization_term = torch.mean(torch.abs(self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]))
+                difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
+                regularization_term = torch.sum(difference**2, dim=1)
                 loss += self.opt.regularize_coeff * regularization_term
             
             # TODO: Implement normal sds
@@ -550,10 +551,6 @@ class Trainer(object):
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.png')
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     cv2.imwrite(save_path, pred)
-                    wandb.log({
-                        "train-vis/images": wandb.Image(pred),
-                        "train-vis/step": self.global_step,
-                    })
                 else:
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.mp4')
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -696,10 +693,6 @@ class Trainer(object):
             save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             cv2.imwrite(save_path, np.hstack(vis_frames))
-            wandb.log({
-                "validation/images": wandb.Image(np.hstack(vis_frames)),
-                "validation/step": self.epoch,
-            })
         else:
             save_path = os.path.join(self.workspace, 'validation', f'{name}.mp4')
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
