@@ -63,7 +63,7 @@ class ZeroScope(nn.Module):
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
         else:
             model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t)
+            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
         self.vae = pipe.vae.eval()
         self.tokenizer = pipe.tokenizer
