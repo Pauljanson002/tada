@@ -17,7 +17,7 @@ guidance:
 training:
   iters: 500
   albedo_iters: 10000
-  lr: 0.001
+  lr: 0.01
   min_lr: 1e-4
   ckpt: latest
   anneal_tex_reso: False
