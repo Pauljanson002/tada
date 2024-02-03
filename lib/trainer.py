@@ -223,7 +223,7 @@ class Trainer(object):
 
     def train_step(self, data, is_full_body):
         do_rgbd_loss = self.default_view_data is not None and (self.global_step % self.opt.known_view_interval == 0)
-
+        loss_dict = {}
         if do_rgbd_loss:
             data = self.default_view_data
 
@@ -285,13 +285,17 @@ class Trainer(object):
 
             if self.opt.rgb_sds:
                 loss = self.guidance.train_step(dir_text_z, video_frames).mean()
+                loss_dict["rgb_sds"] = loss.item()
             else:
                 loss = 0
                 
             if self.opt.regularize_coeff > 0:
                 difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
-                regularization_term = torch.sum(difference**2, dim=1)
+                regularization_term = torch.sum(difference * difference)
                 loss += self.opt.regularize_coeff * regularization_term
+                loss_dict["reg_loss"] = regularization_term.item()
+            else:
+                loss_dict["reg_loss"] = 0
             
             # TODO: Implement normal sds
             # if self.opt.normal_sds:
@@ -312,6 +316,7 @@ class Trainer(object):
                 loss = loss + lambda_normal * (1 - F.cosine_similarity(normal, gt_normal).mean())
             # depth loss
             if self.opt.lambda_depth > 0:
+                depth = None
                 lambda_depth = self.opt.lambda_depth * min(1, self.global_step / self.opt.iters)
                 loss = loss + lambda_depth * (1 - self.pearson(depth, gt_depth))
         else:
@@ -345,7 +350,7 @@ class Trainer(object):
                         # exit()
 
 
-        return pred, loss
+        return pred, loss , loss_dict
 
     def eval_step(self, data):
         H, W = data['H'].item(), data['W'].item()
@@ -513,7 +518,8 @@ class Trainer(object):
         self.logger.info(
             f"==> Start Training {self.workspace} Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
 
-        total_loss = 0
+        total_sds_loss = 0
+        total_reg_loss = 0
         if self.local_rank == 0 and self.report_metric_at_train:
             for metric in self.metrics:
                 metric.clear()
@@ -543,7 +549,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                pred_rgbs, loss = self.train_step(data, loader.dataset.full_body)
+                pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body)
                 
             if self.global_step % 20 == 0:
                 if not video:
@@ -565,9 +571,15 @@ class Trainer(object):
                 if self.scheduler_update_every_step:
                     self.lr_scheduler.step()
 
-
             loss_val = loss.item()
-            total_loss += loss_val
+            total_sds_loss += loss_dict['rgb_sds']
+            total_reg_loss += loss_dict['reg_loss']
+            wandb.log({
+                "loss/rgb_sds": loss_dict['rgb_sds'],
+                "loss/reg_loss": loss_dict['reg_loss'],
+                "local_step": self.local_step,
+                "epoch": self.epoch,
+            })
 
             if self.local_rank == 0:
                 if self.use_tensorboardX:
@@ -576,10 +588,10 @@ class Trainer(object):
 
                 if self.scheduler_update_every_step:
                     pbar.set_description(
-                        f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f}), "
+                        f"SDS loss={loss_dict['rgb_sds']:.4f} , Reg loss{loss_dict['reg_loss']:.4f}), "
                         f"lr={self.optimizer.param_groups[0]['lr']:.6f}, ")
                 else:
-                    pbar.set_description(f"loss={loss_val:.4f} ({total_loss / self.local_step:.4f})")
+                    pbar.set_description(f"SDS loss={loss_dict['rgb_sds']:.4f} , Reg loss{loss_dict['reg_loss']:.4f})")
                 pbar.update(loader.batch_size)
             # if self.opt.debug:
             #     break
@@ -600,7 +612,7 @@ class Trainer(object):
         if self.ema is not None:
             self.ema.update()
 
-        average_loss = total_loss / self.local_step
+        average_loss = (total_reg_loss+total_sds_loss) / self.local_step
         self.stats["loss"].append(average_loss)
 
         if self.local_rank == 0:
