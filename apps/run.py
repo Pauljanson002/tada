@@ -95,7 +95,6 @@ def main(cfg):
             guidance = configure_guidance()
         except:
             guidance = configure_guidance()
-
         wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["tada"],mode=cfg.wandb_mode)
 
 
