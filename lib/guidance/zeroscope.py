@@ -63,7 +63,7 @@ class ZeroScope(nn.Module):
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
         else:
             model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t)
+            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
         self.vae = pipe.vae.eval()
         self.tokenizer = pipe.tokenizer
@@ -155,72 +155,72 @@ class ZeroScope(nn.Module):
 
         return loss
 
-    def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
-                           save_guidance_path=None):
-        B = pred_rgb.shape[0]
-        K = (text_embeddings.shape[0] // B) - 1  # maximum number of prompts
+    # def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
+    #                        save_guidance_path=None):
+    #     B = pred_rgb.shape[0]
+    #     K = (text_embeddings.shape[0] // B) - 1  # maximum number of prompts
 
-        if as_latent:
-            latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
-        else:
-            # interp to 512x512 to be fed into vae.
-            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
-            # encode image into latents with vae, requires grad!
-            latents = self.encode_imgs(pred_rgb_512)
+    #     if as_latent:
+    #         latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
+    #     else:
+    #         # interp to 512x512 to be fed into vae.
+    #         pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+    #         # encode image into latents with vae, requires grad!
+    #         latents = self.encode_imgs(pred_rgb_512)
 
-        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+    #     # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
+    #     t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
 
-        # predict the noise residual with unet, NO grad!
-        with torch.no_grad():
-            # add noise
-            noise = torch.randn_like(latents)
-            latents_noisy = self.scheduler.add_noise(latents, noise, t)
-            # pred noise
-            latent_model_input = torch.cat([latents_noisy] * (1 + K))
-            tt = torch.cat([t] * (1 + K))
-            unet_output = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+    #     # predict the noise residual with unet, NO grad!
+    #     with torch.no_grad():
+    #         # add noise
+    #         noise = torch.randn_like(latents)
+    #         latents_noisy = self.scheduler.add_noise(latents, noise, t)
+    #         # pred noise
+    #         latent_model_input = torch.cat([latents_noisy] * (1 + K))
+    #         tt = torch.cat([t] * (1 + K))
+    #         unet_output = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
 
-            # perform guidance (high scale from paper!)
-            noise_pred_uncond, noise_pred_text = unet_output[:B], unet_output[B:]
-            delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
-            noise_pred = noise_pred_uncond + guidance_scale * weighted_perpendicular_aggregator(delta_noise_preds,
-                                                                                                weights, B)
+    #         # perform guidance (high scale from paper!)
+    #         noise_pred_uncond, noise_pred_text = unet_output[:B], unet_output[B:]
+    #         delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
+    #         noise_pred = noise_pred_uncond + guidance_scale * weighted_perpendicular_aggregator(delta_noise_preds,
+    #                                                                                             weights, B)
 
-        # w(t), sigma_t^2
-        w = (1 - self.alphas[t])
-        grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
-        grad = torch.nan_to_num(grad)
+    #     # w(t), sigma_t^2
+    #     w = (1 - self.alphas[t])
+    #     grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
+    #     grad = torch.nan_to_num(grad)
 
-        if save_guidance_path:
-            with torch.no_grad():
-                if as_latent:
-                    pred_rgb_512 = self.decode_latents(latents)
+    #     if save_guidance_path:
+    #         with torch.no_grad():
+    #             if as_latent:
+    #                 pred_rgb_512 = self.decode_latents(latents)
 
-                # visualize predicted denoised image
-                # The following block of code is equivalent to `predict_start_from_noise`...
-                # see zero123_utils.py's version for a simpler implementation.
-                alphas = self.scheduler.alphas.to(latents)
-                total_timesteps = self.max_step - self.min_step + 1
-                index = total_timesteps - t.to(latents.device) - 1
-                b = len(noise_pred)
-                a_t = alphas[index].reshape(b, 1, 1, 1).to(self.device)
-                sqrt_one_minus_alphas = torch.sqrt(1 - alphas)
-                sqrt_one_minus_at = sqrt_one_minus_alphas[index].reshape((b, 1, 1, 1)).to(self.device)
-                pred_x0 = (latents_noisy - sqrt_one_minus_at * noise_pred) / a_t.sqrt()  # current prediction for x_0
-                result_hopefully_less_noisy_image = self.decode_latents(pred_x0.to(latents.type(self.precision_t)))
+    #             # visualize predicted denoised image
+    #             # The following block of code is equivalent to `predict_start_from_noise`...
+    #             # see zero123_utils.py's version for a simpler implementation.
+    #             alphas = self.scheduler.alphas.to(latents)
+    #             total_timesteps = self.max_step - self.min_step + 1
+    #             index = total_timesteps - t.to(latents.device) - 1
+    #             b = len(noise_pred)
+    #             a_t = alphas[index].reshape(b, 1, 1, 1).to(self.device)
+    #             sqrt_one_minus_alphas = torch.sqrt(1 - alphas)
+    #             sqrt_one_minus_at = sqrt_one_minus_alphas[index].reshape((b, 1, 1, 1)).to(self.device)
+    #             pred_x0 = (latents_noisy - sqrt_one_minus_at * noise_pred) / a_t.sqrt()  # current prediction for x_0
+    #             result_hopefully_less_noisy_image = self.decode_latents(pred_x0.to(latents.type(self.precision_t)))
 
-                # visualize noisier image
-                result_noisier_image = self.decode_latents(latents_noisy.to(pred_x0).type(self.precision_t))
+    #             # visualize noisier image
+    #             result_noisier_image = self.decode_latents(latents_noisy.to(pred_x0).type(self.precision_t))
 
-                # all 3 input images are [1, 3, H, W], e.g. [1, 3, 512, 512]
-                viz_images = torch.cat([pred_rgb_512, result_noisier_image, result_hopefully_less_noisy_image], dim=0)
-                save_image(viz_images, save_guidance_path)
+    #             # all 3 input images are [1, 3, H, W], e.g. [1, 3, 512, 512]
+    #             viz_images = torch.cat([pred_rgb_512, result_noisier_image, result_hopefully_less_noisy_image], dim=0)
+    #             save_image(viz_images, save_guidance_path)
 
-        # loss = SpecifyGradient.apply(latents, grad)
-        loss = 0.5 * F.mse_loss(latents.float(), (latents - grad).detach(), reduction='sum') / latents.shape[0]
+    #     # loss = SpecifyGradient.apply(latents, grad)
+    #     loss = 0.5 * F.mse_loss(latents.float(), (latents - grad).detach(), reduction='sum') / latents.shape[0]
 
-        return loss
+    #     return loss
 
     def produce_latents(self, text_embeddings, height=320, width=576, num_inference_steps=40, guidance_scale=100,num_frames=5,
                         latents=None):

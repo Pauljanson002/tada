@@ -314,8 +314,8 @@ class DLMesh(nn.Module):
                 if self.opt.use_full_pose:
                     params.append({'params': self.full_pose_6d, 'lr': 0.05})
                 else:
-                    params.append({'params': self.body_pose_6d, 'lr': 0.05})
-                    params.append({'params': self.body_pose_6d_set, 'lr': 0.05})
+                    # params.append({'params': self.body_pose_6d, 'lr': 0.05})
+                    params.append({'params': self.body_pose_6d_set, 'lr': lr})
             else:
                 params.append({'params': self.body_pose, 'lr': 0.05})
             #!!!! Not training Jaw pose for now 
