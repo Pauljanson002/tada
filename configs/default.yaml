@@ -90,3 +90,9 @@ smpl:
   use_face_contour: False
   vitruvian_angle: 25
 wandb_mode: "disabled"
+hydra:
+  run:
+    dir: outputs/${name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${name}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num}

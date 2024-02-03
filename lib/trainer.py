@@ -60,7 +60,7 @@ class Trainer(object):
         self.local_rank = local_rank
         self.world_size = world_size
 
-        self.workspace = os.path.join(opt.workspace, self.name, self.text, self.action)
+        self.workspace = os.path.join(opt.workspace)
         self.ema_decay = ema_decay
         self.fp16 = fp16
         self.best_mode = best_mode
@@ -105,7 +105,6 @@ class Trainer(object):
             self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=5e-4)  # naive adam
         else:
             self.optimizer = optimizer(self.model)
-        breakpoint()
         if lr_scheduler is None:
             self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1)  # fake scheduler
         else:

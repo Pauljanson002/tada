@@ -19,12 +19,12 @@ def main(cfg):
     hydra_singleton = hydra.core.hydra_config.HydraConfig.get()
     if str(hydra_singleton.mode) == "RunMode.MULTIRUN":
         cfg.name = f"{cfg.name}_{hydra_singleton.job.id}"
-        cfg.training.workspace = hydra_singleton.sweep.dir
+        cfg.training.workspace = os.path.join(hydra_singleton.sweep.dir,hydra_singleton.job.id)
     else:
         cfg.training.workspace  = hydra_singleton.run.dir
     # save config to workspace
-    os.makedirs(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action), exist_ok=True)
-    with open(os.path.join(cfg.training.workspace, cfg.name, cfg.text,cfg.action,"config.yaml"), 'w') as f:
+    os.makedirs(os.path.join(cfg.training.workspace, cfg.text,cfg.action), exist_ok=True)
+    with open(os.path.join(cfg.training.workspace,cfg.text,cfg.action,"config.yaml"), 'w') as f:
         f.write(OmegaConf.to_yaml(cfg))
     seed_everything(cfg.seed)
 
