@@ -14,8 +14,13 @@ hydra:
     _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
     gres: "gpu:1"
     cpus_per_gpu: null
-    account: rrg-eugenium
+    account: def-stpopa
     additional_parameters: {}
     array_parallelism: 10
     setup: null
+  run:
+    dir: /scratch/janson2/outputs/${name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: /scratch/janson2/multirun/${name}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num}
 

@@ -18,8 +18,13 @@ def main(cfg):
     # cfg.freeze()
     hydra_singleton = hydra.core.hydra_config.HydraConfig.get()
     if str(hydra_singleton.mode) == "RunMode.MULTIRUN":
-        cfg.name = f"{cfg.name}_{hydra_singleton.job.id}"
-        cfg.training.workspace = os.path.join(hydra_singleton.sweep.dir,hydra_singleton.job.id)
+        if "SLURM_JOB_ID" in os.environ:
+            job_id =  hydra_singleton.job.id.split("_")[-1]
+            cfg.name = f"{cfg.name}_{job_id}"
+            cfg.training.workspace = os.path.join(hydra_singleton.sweep.dir,job_id)
+        else:
+            cfg.name = f"{cfg.name}_{hydra_singleton.job.id}"
+            cfg.training.workspace = os.path.join(hydra_singleton.sweep.dir,hydra_singleton.job.id)
     else:
         cfg.training.workspace  = hydra_singleton.run.dir
     # save config to workspace
