@@ -83,6 +83,7 @@ model:
   ssaa: 2
   video: True
   num_frames: 14
+  use_cubemap: True
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'

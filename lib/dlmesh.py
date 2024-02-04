@@ -480,7 +480,7 @@ class DLMesh(nn.Module):
             light_d = (rays_o[0] + torch.randn(3, device=rays_o.device, dtype=torch.float))
             light_d = safe_normalize(light_d)
 
-        if h == 512 or h == 800:
+        if self.opt.use_cubemap and (h == 512 or h == 800):
 
         # [-1.0,  1.0, -1.0,],
         # [-1.0, -1.0, -1.0,],
