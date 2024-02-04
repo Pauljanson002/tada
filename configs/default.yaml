@@ -35,8 +35,8 @@ training:
   lambda_normal: 1000
   lambda_depth: 10
   use_dpt: False
-  rgb_sds: True
-  normal_sds: True
+  rgb_sds: False
+  normal_sds: False
   mean_sds: True
   accumulate: True
   regularize_coeff: 0.0 

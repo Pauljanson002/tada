@@ -285,8 +285,15 @@ class Trainer(object):
             if self.opt.rgb_sds:
                 loss = self.guidance.train_step(dir_text_z, video_frames).mean()
                 loss_dict["rgb_sds"] = loss.item()
+            elif self.opt.normal_sds:
+                loss = self.guidance.train_step(dir_text_z, normal_frames).mean()
+                loss_dict["normal_sds"] = loss.item()
+            elif self.opt.mean_sds:
+                loss = self.guidance.train_step(dir_text_z, torch.cat([normal_frames, video_frames.detach()])).mean()
+                loss_dict["mean_sds"] = loss.item()
             else:
                 loss = 0
+            
                 
             if self.opt.regularize_coeff > 0:
                 difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
@@ -571,11 +578,10 @@ class Trainer(object):
                     self.lr_scheduler.step()
 
             loss_val = loss.item()
-            total_sds_loss += loss_dict['rgb_sds']
-            total_reg_loss += loss_dict['reg_loss']
+            total_sds_loss += loss_dict.get("rgb_sds", 0)
+            total_reg_loss += loss_dict.get("reg_loss", 0)
             wandb.log({
-                "loss/rgb_sds": loss_dict['rgb_sds'],
-                "loss/reg_loss": loss_dict['reg_loss'],
+                **{"loss/" + k: v for k, v in loss_dict.items()},
                 "local_step": self.local_step,
                 "epoch": self.epoch,
             })
@@ -587,10 +593,10 @@ class Trainer(object):
 
                 if self.scheduler_update_every_step:
                     pbar.set_description(
-                        f"SDS loss={loss_dict['rgb_sds']:.4f} , Reg loss{loss_dict['reg_loss']:.4f}), "
+                        f"loss={loss_val:.4f} , Reg loss{loss_dict['reg_loss']:.4f}), "
                         f"lr={self.optimizer.param_groups[0]['lr']:.6f}, ")
                 else:
-                    pbar.set_description(f"SDS loss={loss_dict['rgb_sds']:.4f} , Reg loss{loss_dict['reg_loss']:.4f})")
+                    pbar.set_description(f"loss={loss_val:.4f} , Reg loss{loss_dict['reg_loss']:.4f})")
                 pbar.update(loader.batch_size)
             # if self.opt.debug:
             #     break
