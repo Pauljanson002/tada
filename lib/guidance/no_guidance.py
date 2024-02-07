@@ -36,15 +36,11 @@ def seed_everything(seed):
     # torch.backends.cudnn.benchmark = True
 
 
-class ZeroScope(nn.Module):
-    def __init__(self, device, fp16, vram_O, t_range=[0.02, 0.98],
-                 weighting_strategy='sds'):
+class NoGuidance(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.device = device
-        self.precision_t = torch.float16 if fp16 else torch.float32
-        self.weighting_strategy = weighting_strategy
 
-        print(f'[INFO] loading zeroscope...')
+        print(f'[INFO] loading No guidance...')
 
         # if hf_key is not None:
         #     print(f'[INFO] using hugging face custom model key: {hf_key}')
@@ -57,18 +53,18 @@ class ZeroScope(nn.Module):
         #     model_key = "runwayml/stable-diffusion-v1-5"
         # else:
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
-        if "SLURM_JOB_ID" in os.environ:
-            model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
-            self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
-        else:
-            model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
-            self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
-        self.vae = pipe.vae.eval()
-        self.tokenizer = pipe.tokenizer
-        self.text_encoder = pipe.text_encoder
-        self.unet = pipe.unet.eval()
+        # if "SLURM_JOB_ID" in os.environ:
+        #     model_key = "cerspense/zeroscope_v2_576w"
+        #     pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
+        #     self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
+        # else:
+        #     model_key = "cerspense/zeroscope_v2_576w"
+        #     pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
+        #     self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
+        # self.vae = pipe.vae.eval()
+        # self.tokenizer = pipe.tokenizer
+        # self.text_encoder = pipe.text_encoder
+        # self.unet = pipe.unet.eval()
 
         # Create model
         # self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
@@ -77,13 +73,12 @@ class ZeroScope(nn.Module):
         # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
         
-        #TODO SJC (DDPM scheudler)
-        self.num_train_timesteps = self.scheduler.config.num_train_timesteps
-        self.min_step = int(self.num_train_timesteps * t_range[0])
-        self.max_step = int(self.num_train_timesteps * t_range[1])
-        self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
+        # self.num_train_timesteps = self.scheduler.config.num_train_timesteps
+        # self.min_step = int(self.num_train_timesteps * t_range[0])
+        # self.max_step = int(self.num_train_timesteps * t_range[1])
+        # self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
         
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        # self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):
@@ -95,63 +90,25 @@ class ZeroScope(nn.Module):
             text_embeddings: torch.Tensor
         """
         # Tokenize text and get embeddings
-        text_input = self.tokenizer(prompt,
-                                    padding='max_length',
-                                    max_length=self.tokenizer.model_max_length,
-                                    truncation=True,
-                                    return_tensors='pt')
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        # text_input = self.tokenizer(prompt,
+        #                             padding='max_length',
+        #                             max_length=self.tokenizer.model_max_length,
+        #                             truncation=True,
+        #                             return_tensors='pt')
+        # text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        text_embeddings = torch.randn(1, 77, 768)
 
         return text_embeddings
 
-    def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False,**kwargs): # pred_rgbt: [F, 3, H, W]
-        if rgb_as_latents:
-            latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
-            latents = latents * 2 - 1
-        else:
-            pred_rgbt = F.interpolate(pred_rgbt, (320, 576), mode='bilinear', align_corners=False)
-            pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
-            latents = self.encode_imgs(pred_rgbt)
-
-        # Before : latents = torch.mean(latents, keepdim=True, dim=0)
-
-        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
-
-        # TODO: SJC not implemented need to check what it is and whether it helps 
-        # _t = time.time()
-        with torch.no_grad():
-            # add noise
-            noise = torch.randn_like(latents)
-            latents_noisy = self.scheduler.add_noise(latents, noise, t)
-            # pred noise
-            latent_model_input = torch.cat([latents_noisy] * 2)
-            tt = torch.cat([t] * 2)
-            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
-
-        # perform guidance (high scale from paper!)
-        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-        # w(t), sigma_t^2
-        if self.weighting_strategy == "sds":
-            # w(t), sigma_t^2
-            w = (1 - self.alphas[t]).view(-1, 1, 1, 1)
-        elif self.weighting_strategy == "fantasia3d":
-            w = (self.alphas[t] ** 0.5 * (1 - self.alphas[t])).view(-1, 1, 1, 1)
-        else:
-            raise ValueError(
-                f"Unknown weighting strategy: {self.cfg.weighting_strategy}"
-            )
-
-        grad = w * (noise_pred - noise)
-        grad = torch.nan_to_num(grad)
+    def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False): # pred_rgbt: [F, 3, H, W]
+        
         
         # TODO: Do we need gradient clipping ? 
         # if grad clip
         # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
-        loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
+        # loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
+        loss = torch.tensor(0.0).cuda() # dummy loss
 
         return loss
 

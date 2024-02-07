@@ -1,4 +1,5 @@
 import glob
+import pickle
 import random
 import tqdm
 import imageio
@@ -16,9 +17,10 @@ import torch.distributed as dist
 from rich.console import Console
 from torch_ema import ExponentialMovingAverage
 import wandb
-
+from lib.guidance.no_guidance import NoGuidance
 from lib.common.utils import *
 from lib.dpt import DepthNormalEstimation
+from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,axis_angle_to_matrix,matrix_to_rotation_6d
 import wandb
 import logging
 class Trainer(object):
@@ -86,6 +88,12 @@ class Trainer(object):
         self.guidance = guidance
         # self.guidance = torch.nn.DataParallel(self.guidance, device_ids=[0, 1, 2, 3]).module
         # text prompt
+        if isinstance(self.guidance, NoGuidance):
+            self.running_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
+            self.running_body_pose = torch.as_tensor(self.running_body_pose).to("cuda").float()
+            self.running_body_pose = self.running_body_pose[:5,:]
+            self.running_body_pose = matrix_to_rotation_6d(axis_angle_to_matrix(self.running_body_pose.view(-1,3))).view(5, -1)
+            
         self.text_embeds = None
         if self.guidance is not None:
             for p in self.guidance.parameters():
@@ -220,7 +228,7 @@ class Trainer(object):
     #             print(*args, file=self.log_ptr)
     #             self.log_ptr.flush()  # write immediately to file
 
-    def train_step(self, data, is_full_body):
+    def train_step(self, data, is_full_body,**kwargs):
         do_rgbd_loss = self.default_view_data is not None and (self.global_step % self.opt.known_view_interval == 0)
         loss_dict = {}
         if do_rgbd_loss:
@@ -283,7 +291,7 @@ class Trainer(object):
             
 
             if self.opt.rgb_sds:
-                loss = self.guidance.train_step(dir_text_z, video_frames).mean()
+                loss = self.guidance.train_step(dir_text_z, video_frames,view_id=kwargs.get("view_id",0)).mean()
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
                 loss = self.guidance.train_step(dir_text_z, normal_frames).mean()
@@ -293,6 +301,10 @@ class Trainer(object):
                 loss_dict["mean_sds"] = loss.item()
             else:
                 loss = 0
+            
+            if isinstance(self.guidance, NoGuidance):
+                # L2 loss between the body pose 6d and the running pose
+                loss += 1000 * F.mse_loss(self.model.init_body_pose_6d_set+self.model.body_pose_6d_set, self.running_body_pose)
             
                 
             if self.opt.regularize_coeff > 0:
@@ -543,10 +555,10 @@ class Trainer(object):
         video = self.model.opt.video
         self.local_step = 0
         temp_grads = []
-        for data in loader:
+        for view_id,data in enumerate(loader):
 
-            # if data["dirkey"][0] in ["side","back","overhead"]:
-            #     print(f"skip {data['dirkey'][0]}")
+            # if view_id in [0,2]:
+            #     print(f"Skipping view {view_id}: {data['dirkey'][0]}")
             #     continue
 
             self.local_step += 1
@@ -555,7 +567,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body)
+                pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body,view_id=view_id)
                 
             if self.global_step % 20 == 0:
                 if not video:

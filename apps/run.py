@@ -54,6 +54,12 @@ def main(cfg):
         elif opt.name == "zeroscope":
             from lib.guidance.zeroscope import ZeroScope
             return ZeroScope(device,cfg.fp16, opt.vram_O)
+        elif opt.name == "no_guidance":
+            from lib.guidance.no_guidance import NoGuidance
+            return NoGuidance()
+        elif opt.name == "naive":
+            from lib.guidance.naive_guidance import Naive
+            return Naive()
         else:
             from lib.guidance.clip import CLIP
             return CLIP(device)

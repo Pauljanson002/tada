@@ -22,7 +22,7 @@ from lib.common.visual import draw_landmarks
 from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,axis_angle_to_matrix,matrix_to_rotation_6d
 import nvdiffrast.torch as dr
 import torchvision
-
+import pickle
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers, bias=True):
         super().__init__()
@@ -95,9 +95,14 @@ class DLMesh(nn.Module):
             self.jaw_pose = torch.as_tensor(smplx_params["jaw_pose"]).to(self.device)
             self.num_frames = opt.num_frames
             self.body_pose = torch.as_tensor(smplx_params["body_pose"]).to(self.device)
+            
             self.body_pose = self.body_pose.view(-1, 3)
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
             self.body_pose = self.body_pose.view(1, -1)
+            
+            self.diving_body_pose = pickle.load(open("4d/poses/diving.pkl", "rb"))["body_pose"]
+            self.diving_body_pose = torch.as_tensor(self.diving_body_pose).to(self.device)
+            self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:
                 if self.opt.model_change:
                     if self.opt.use_full_pose:
@@ -113,10 +118,10 @@ class DLMesh(nn.Module):
                         self.full_pose_6d = torch.zeros(self.init_full_pose_6d.shape).to(self.device) 
                     else:
                         self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
-                        self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([self.num_frames,1])
+                        #self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([self.num_frames,1])
+                        self.init_body_pose_6d_set = matrix_to_rotation_6d(axis_angle_to_matrix(self.diving_body_pose.view(-1,3))).view(self.num_frames,-1).float()
                         self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
                         self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
-                        
                 else:
                     if self.opt.use_full_pose:
                         self.full_pose_6d = torch.cat([
@@ -599,6 +604,7 @@ class DLMesh(nn.Module):
             rgbt = torch.stack(rgb_frame_list,dim=0)
             normalt = torch.stack(normal_frame_list,dim=0)
             smplx_landmarkst = torch.stack(smplx_landmarks_frame_list,dim=0)
+
                 
         else:
             pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train)
