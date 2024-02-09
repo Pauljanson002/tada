@@ -112,7 +112,7 @@ class Naive(nn.Module):
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
         # loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
         # Calculate l2 difference betwen the 
-        loss = 1000 * F.mse_loss(pred_rgbt,self.reference_videos[view_id],reduction="sum") / pred_rgbt.shape[0]
+        loss = F.mse_loss(pred_rgbt,self.reference_videos[view_id],reduction="sum") / pred_rgbt.shape[0]
 
         return loss
 

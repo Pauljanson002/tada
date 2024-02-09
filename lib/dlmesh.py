@@ -21,6 +21,9 @@ from lib.common.lbs import warp_points
 from lib.common.visual import draw_landmarks
 from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,axis_angle_to_matrix,matrix_to_rotation_6d
 import nvdiffrast.torch as dr
+from human_body_prior.tools.model_loader import load_model
+from human_body_prior.models.vposer_model import VPoser
+
 import torchvision
 import pickle
 class MLP(nn.Module):
@@ -54,7 +57,7 @@ class DLMesh(nn.Module):
         self.opt = opt
 
         self.num_remeshing = 1
-
+        self.vpose = False
         self.renderer = Renderer()
         self.glctx = dr.RasterizeCudaContext()
         self.device = torch.device("cuda")
@@ -88,6 +91,10 @@ class DLMesh(nn.Module):
             ).to(self.device)
 
             self.smplx_faces = self.body_model.faces.astype(np.int32)
+            
+            if self.vpose:
+                vp , ps = load_model("/home/paulj/projects/TADA/V02_05",model_code=VPoser,remove_words_in_model_weights="vp_model",disable_grad=True)
+                self.body_prior = vp.to(self.device)
 
             param_file = "./data/init_body/fit_smplx_params.npz"
             smplx_params = dict(np.load(param_file))
@@ -101,7 +108,7 @@ class DLMesh(nn.Module):
             self.body_pose = self.body_pose.view(1, -1)
             
             self.diving_body_pose = pickle.load(open("4d/poses/diving.pkl", "rb"))["body_pose"]
-            self.diving_body_pose = torch.as_tensor(self.diving_body_pose).to(self.device)
+            self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
             self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:
                 if self.opt.model_change:
@@ -117,11 +124,16 @@ class DLMesh(nn.Module):
                         ],dim=0).reshape(1,-1)
                         self.full_pose_6d = torch.zeros(self.init_full_pose_6d.shape).to(self.device) 
                     else:
-                        self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
-                        #self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([self.num_frames,1])
-                        self.init_body_pose_6d_set = matrix_to_rotation_6d(axis_angle_to_matrix(self.diving_body_pose.view(-1,3))).view(self.num_frames,-1).float()
-                        self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
-                        self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
+                        if self.vpose:
+                            self.init_body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
+                            self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
+
+                        else:
+                            self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                            self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([self.num_frames,1])
+                            self.init_body_pose_6d_set = matrix_to_rotation_6d(axis_angle_to_matrix(self.diving_body_pose.view(-1,3))).view(self.num_frames,-1).float()
+                            self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
+                            self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
                 else:
                     if self.opt.use_full_pose:
                         self.full_pose_6d = torch.cat([
@@ -194,7 +206,7 @@ class DLMesh(nn.Module):
                 if self.opt.use_full_pose:
                     self.full_pose_6d = nn.Parameter(self.full_pose_6d)
                 else:
-                    self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+                    #self.body_pose_6d = nn.Parameter(self.body_pose_6d)
                     self.body_pose_6d_set = nn.Parameter(self.body_pose_6d_set)
             else:
                 self.body_pose = nn.Parameter(self.body_pose)
@@ -364,7 +376,10 @@ class DLMesh(nn.Module):
                     left_hand_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[25:40].view(-1,6))).view(1,-1)
                     right_hand_pose = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[40:55].view(-1,6))).view(1,-1)
                 else:
-                    body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
+                    if self.vpose:
+                        body_pose = self.body_prior.decode(body_pose_6d.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    else:
+                        body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
                     global_orient = self.global_orient
                     jaw_pose = None
                     left_eye_pose = None

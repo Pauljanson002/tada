@@ -171,3 +171,5 @@ web
 *.pyc
 wandb
 outputs
+human_body_prior
+V02_05

@@ -616,7 +616,7 @@ class Trainer(object):
         #! Added by PJ , Its a workaround 
         #TODO : Find a permanent solution
         # Normalize the gradient by the number of steps
-        if self.opt.accumulate:
+        if self.opt.accumulate and False:
             temp_grads = sum(temp_grads)
             self.model.body_pose_6d_set.grad = temp_grads / self.local_step
             self.scaler.step(self.optimizer)
