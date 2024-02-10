@@ -3,20 +3,21 @@ from human_body_prior.models.vposer_model import VPoser
 import pickle
 import torch
 import pyrender
+import trimesh
 import smplx
+import numpy as np
 vp , ps = load_model('/home/paulj/projects/TADA/V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=True)
 
 vp = vp.cuda()
 
-motion_file = pickle.load(open('/home/paulj/projects/TADA/4d/poses/running.pkl', 'rb'))
+motion_file = pickle.load(open('/home/paulj/projects/TADA/4d/poses/diving.pkl', 'rb'))
 motion = torch.from_numpy(motion_file['body_pose'][0]).float().cuda().unsqueeze(0)
 print(motion.shape)
-body_z = vp.encode(motion).mean
+# body_z = vp.encode(motion).mean
+body_z = torch.randn(1, 32).cuda()
+decode_pose = vp.decode(body_z)["pose_body"].contiguous().view(-1, 63)
 
-
-
-r = pyrender.OffscreenRenderer(viewport_width=400,viewport_height=400,point_size=1.0)
-
+print("Reconstruction loss: ", torch.nn.functional.mse_loss(motion, decode_pose).item())
 body_model = smplx.create(
                 model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz",
                 model_type='smplx',
@@ -38,32 +39,45 @@ body_model = smplx.create(
                 num_pca_comps=12,
                 dtype=torch.float32,
                 batch_size=1,
-            ).to(self.device)
+            ).cuda()
 
-curr_rot = Rot.from_euler("zyx", [0, 0, 0])
-transform33 = curr_rot.as_matrix()
-transform = np.eye(4)
-transform[:3,:3] = transform33
-transform[2,3] = -1
-fuze_trimesh.apply_transform(transform)
 
-scene = pyrender.Scene.from_trimesh_scene(fuze_trimesh)
-camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0, aspectRatio=1.0)
-s = np.sqrt(2)/2
-camera_pose = np.array([
-        [1.0, 0,   0,  0],
-        [0,  1.0, 0.0, 0],
-        [0.0,  0,   1,   1],
-        [0.0,  0.0, 0.0, 1.0],])
-# camera_pose[:3,:3] = curr_rot.as_matrix()
-scene.add(camera, pose=camera_pose)
-light = pyrender.SpotLight(color=np.ones(3), intensity=5.0,
-                            innerConeAngle=np.pi/6.0,
-                            outerConeAngle=np.pi/6.0)
-scene.add(light, pose=camera_pose)
-color, depth = r.render(scene)
-plt.imshow(color)
-print(transform33)
-print(transform)
+output = body_model(return_verts=True, body_pose=decode_pose)
+output_2 = body_model(return_verts=True, body_pose=motion)
+output_2.vertices[0] += torch.tensor([0.5, 0, 0]).cuda()
+mesh = trimesh.Trimesh(output.vertices[0].cpu().detach().numpy(), body_model.faces)
 
-breakpoint()
+mesh.apply_transform(trimesh.transformations.rotation_matrix(
+    np.radians(90), [1, 0, 0]))
+
+mesh_2 = trimesh.Trimesh(output_2.vertices[0].cpu().detach().numpy(), body_model.faces)
+mesh_2.apply_transform(trimesh.transformations.rotation_matrix(
+    np.radians(90), [1, 0, 0]))
+
+
+scene = pyrender.Scene(bg_color=[0.0, 0.0, 0.0, 0.0],
+                            ambient_light=(0.3, 0.3, 0.3))
+render_mesh = pyrender.Mesh.from_trimesh(
+    mesh,
+    smooth=True,
+    material=pyrender.MetallicRoughnessMaterial(
+        metallicFactor=0.2,
+        roughnessFactor=0.6,
+        alphaMode='OPAQUE',
+        baseColorFactor=(0.3, 0.5, 0.55, 1.0)
+))
+
+render_mesh_2 = pyrender.Mesh.from_trimesh(
+    mesh_2,
+    smooth=True,
+    material=pyrender.MetallicRoughnessMaterial(
+        metallicFactor=0.2,
+        roughnessFactor=0.6,
+        alphaMode='OPAQUE',
+        baseColorFactor=(0.0, 0.0, 1.0, 1.0)
+))
+scene.add(render_mesh)
+scene.add(render_mesh_2)
+
+pyrender.Viewer(scene, use_raymond_lighting=True)
+

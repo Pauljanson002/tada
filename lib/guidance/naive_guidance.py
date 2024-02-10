@@ -112,7 +112,8 @@ class Naive(nn.Module):
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
         # loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
         # Calculate l2 difference betwen the 
-        loss = F.mse_loss(pred_rgbt,self.reference_videos[view_id]).mean() / pred_rgbt.shape[0]
+        
+        loss = F.mse_loss(pred_rgbt,self.reference_videos[view_id])
 
         return loss
 
@@ -328,12 +329,12 @@ if __name__ == '__main__':
     seed_everything(opt.seed)
 
     device = torch.device('cuda')
-    zs = ZeroScope(device,False,True)
+    #zs = ZeroScope(device,False,True)
     
     for view in ["front", "back", "side"]:
         prompt = f"a {view} view 3D rendering of {opt.subject} {opt.action}, full-body"
         vid = zs.prompt_to_video(prompt, height=opt.H, width=opt.W, num_inference_steps=opt.steps)[0]
-        breakpoint()
+
     # opt.negative
     
 

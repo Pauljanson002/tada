@@ -75,7 +75,7 @@ def main(cfg):
         else:  # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(5 * opt.lr), betas=(0.9, 0.99), eps=1e-15)
 
-        scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 0.1 ** min(x / opt.iters, 1))
+        scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 1 ** min(x / opt.iters, 1))
         return scheduler, optimizer
 
     model = DLMesh(cfg.model)
@@ -107,7 +107,7 @@ def main(cfg):
             guidance = configure_guidance()
         except:
             guidance = configure_guidance()
-        wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["tada"],mode=cfg.wandb_mode)
+        wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["tada"],mode=cfg.wandb_mode,reinit=True)
 
 
         trainer = Trainer(cfg.name,

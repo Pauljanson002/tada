@@ -93,7 +93,7 @@ class DLMesh(nn.Module):
             self.smplx_faces = self.body_model.faces.astype(np.int32)
             
             if self.vpose:
-                vp , ps = load_model("/home/paulj/projects/TADA/V02_05",model_code=VPoser,remove_words_in_model_weights="vp_model",disable_grad=True)
+                vp , ps = load_model("/home/paulj/projects/TADA/V02_05",model_code=VPoser,remove_words_in_model_weights="vp_model",disable_grad=False)
                 self.body_prior = vp.to(self.device)
 
             param_file = "./data/init_body/fit_smplx_params.npz"
@@ -107,7 +107,17 @@ class DLMesh(nn.Module):
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
             self.body_pose = self.body_pose.view(1, -1)
             
-            self.diving_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
+            if self.opt.initialize_pose == "diving":
+                self.diving_body_pose = pickle.load(open("4d/poses/diving.pkl", "rb"))["body_pose"]
+            elif self.opt.initialize_pose == "running":
+                self.diving_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
+            elif self.opt.initialize_pose == "running_gauss":
+                self.diving_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
+                self.diving_body_pose += np.random.normal(0, 0.1, self.diving_body_pose.shape)
+            elif self.opt.initialize_pose == "running_first_frame":
+                self.diving_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
+                self.diving_body_pose = self.diving_body_pose[:1, :]
+                self.diving_body_pose = np.repeat(self.diving_body_pose, self.num_frames, axis=0)
             self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
             self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:

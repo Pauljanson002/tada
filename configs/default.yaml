@@ -21,7 +21,7 @@ training:
   min_lr: 1e-4
   ckpt: latest
   anneal_tex_reso: False
-  optim: 'adan'
+  optim: 'adam'
   train_face_ratio: 0.0
   eval_interval: 1
   workspace: "/data/tada"
@@ -84,6 +84,8 @@ model:
   video: True
   num_frames: 14
   use_cubemap: True
+  # Only for one experiment
+  initialize_pose: "diving"
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'

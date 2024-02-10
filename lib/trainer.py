@@ -591,6 +591,13 @@ class Trainer(object):
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.mp4')
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     imageio.mimwrite(save_path, pred_rgbs , fps=3, quality=5, macro_block_size=1)
+                    
+            # Add the first frame for reference
+            if self.global_step == 1 and self.model.opt.video:
+                pred_np = (pred_rgbs).astype(np.uint8)
+                t_pred = pred_np.transpose(1,0,2,3)
+                t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
+                self.train_video_frames.append(t_pred)
 
             self.scaler.scale(loss).backward()
             temp_grads.append(self.model.body_pose_6d_set.grad)
