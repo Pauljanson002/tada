@@ -8,7 +8,7 @@ text: ""
 action: "sitting"
 negative: "unrealistic,ugly,bad anatomy,not real,not realistic,not human,not a person,not a human"
 test: False
-save_mesh: True
+save_mesh: False
 guidance:
   name: sd
   vram_O: True

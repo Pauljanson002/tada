@@ -107,7 +107,7 @@ class DLMesh(nn.Module):
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
             self.body_pose = self.body_pose.view(1, -1)
             
-            self.diving_body_pose = pickle.load(open("4d/poses/diving.pkl", "rb"))["body_pose"]
+            self.diving_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
             self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
             self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:

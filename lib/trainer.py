@@ -148,10 +148,10 @@ class Trainer(object):
             os.makedirs(self.workspace, exist_ok=True)
             self.log_path = os.path.join(self.workspace, f"log_{self.name}.txt")
             self.log_ptr = open(self.log_path, "a+")
-
-            self.ckpt_path = os.path.join(self.workspace, 'checkpoints')
-            self.best_path = f"{self.ckpt_path}/{self.name}.pth"
-            os.makedirs(self.ckpt_path, exist_ok=True)
+            if False:
+                self.ckpt_path = os.path.join(self.workspace, 'checkpoints')
+                self.best_path = f"{self.ckpt_path}/{self.name}.pth"
+                os.makedirs(self.ckpt_path, exist_ok=True)
 
         self.logger.info(
             f' Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
@@ -445,12 +445,12 @@ class Trainer(object):
 
             self.train_one_epoch(train_loader)
 
-            if self.workspace is not None and self.local_rank == 0:
+            if (self.workspace is not None and self.local_rank == 0) and False: # Disabling this for now
                 self.save_checkpoint(full=True, best=False)
 
-            if self.epoch % self.eval_interval == 0:
+            if (self.epoch % self.eval_interval == 0):
                 self.evaluate_one_epoch(valid_loader)
-                self.save_checkpoint(full=False, best=True)
+                #self.save_checkpoint(full=False, best=True)
                 if self.write_train_video:
                     all_preds = np.stack(self.train_video_frames, axis=0)
                     imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
@@ -467,6 +467,12 @@ class Trainer(object):
             imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
                             macro_block_size=1)
             self.logger.info(f"==> Finished writing train video.")
+            # try:
+            #     wandb.log({
+            #         "train_video": wandb.Video(os.path.join(self.workspace,"results", f'train_vis.mp4'), fps=25, format="mp4")
+            #     })
+            # except:
+            #     pass
 
         
         if self.use_tensorboardX and self.local_rank == 0:
@@ -529,6 +535,12 @@ class Trainer(object):
                 for i in range(len(all_preds)):
                     imageio.mimwrite(os.path.join(save_path, f'{name}_view_{i}.mp4'), all_preds[i], fps=5, quality=5,
                                     macro_block_size=1)
+                    # try:
+                    #     wandb.log({
+                    #         f"test_video_{i}": wandb.Video(os.path.join(save_path, f'{name}_view_{i}.mp4'), fps=5, format="mp4")
+                    #     })
+                    # except:
+                    #     pass
 
         self.logger.info(f"==> Finished Test.")
 
@@ -569,7 +581,7 @@ class Trainer(object):
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body,view_id=view_id)
                 
-            if self.global_step % 20 == 0:
+            if self.global_step % 50 == 0:
                 if not video:
                     pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.png')
@@ -616,7 +628,7 @@ class Trainer(object):
         #! Added by PJ , Its a workaround 
         #TODO : Find a permanent solution
         # Normalize the gradient by the number of steps
-        if self.opt.accumulate and False:
+        if self.opt.accumulate:
             temp_grads = sum(temp_grads)
             self.model.body_pose_6d_set.grad = temp_grads / self.local_step
             self.scaler.step(self.optimizer)
@@ -632,6 +644,13 @@ class Trainer(object):
         average_loss = (total_reg_loss+total_sds_loss) / self.local_step
         self.stats["loss"].append(average_loss)
 
+        wandb.log({
+            "epoch": self.epoch,
+            "train_one_epoch/loss": average_loss,
+            "train_one_epoch/rgb_sds": total_sds_loss / self.local_step,
+            "train_one_epoch/reg_loss": total_reg_loss / self.local_step,
+        })
+        
         if self.local_rank == 0:
             pbar.close()
             if self.report_metric_at_train:
@@ -723,10 +742,11 @@ class Trainer(object):
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             cv2.imwrite(save_path, np.hstack(vis_frames))
         else:
-            save_path = os.path.join(self.workspace, 'validation', f'{name}.mp4')
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            pred = (pred * 255).astype(np.uint8)
-            imageio.mimwrite(save_path, pred, fps=1, quality=5, macro_block_size=1)
+            if False:
+                save_path = os.path.join(self.workspace, 'validation', f'{name}.mp4')
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                pred = (pred * 255).astype(np.uint8)
+                imageio.mimwrite(save_path, pred, fps=1, quality=5, macro_block_size=1)
             
 
         average_loss = total_loss / self.local_step

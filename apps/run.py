@@ -28,9 +28,10 @@ def main(cfg):
     else:
         cfg.training.workspace  = hydra_singleton.run.dir
     # save config to workspace
-    os.makedirs(os.path.join(cfg.training.workspace, cfg.text,cfg.action), exist_ok=True)
-    with open(os.path.join(cfg.training.workspace,cfg.text,cfg.action,"config.yaml"), 'w') as f:
-        f.write(OmegaConf.to_yaml(cfg))
+    if False: #disabling this for now
+        os.makedirs(os.path.join(cfg.training.workspace, cfg.text,cfg.action), exist_ok=True)
+        with open(os.path.join(cfg.training.workspace,cfg.text,cfg.action,"config.yaml"), 'w') as f:
+            f.write(OmegaConf.to_yaml(cfg))
     seed_everything(cfg.seed)
 
     def build_dataloader(phase):
@@ -134,7 +135,8 @@ def main(cfg):
         # test
         test_loader = build_dataloader('test')
         trainer.test(test_loader)
-        trainer.save_mesh()
+        if cfg.save_mesh:
+            trainer.save_mesh()
 
 if __name__ == '__main__':
     main()
