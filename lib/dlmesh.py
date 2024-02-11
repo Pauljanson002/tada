@@ -57,7 +57,7 @@ class DLMesh(nn.Module):
         self.opt = opt
 
         self.num_remeshing = 1
-        self.vpose = False
+        self.vpose = True
         self.renderer = Renderer()
         self.glctx = dr.RasterizeCudaContext()
         self.device = torch.device("cuda")
@@ -225,9 +225,9 @@ class DLMesh(nn.Module):
         # Create an FaceLandmarker object.
         base_options = python.BaseOptions(model_asset_path='data/mediapipe/face_landmarker.task')
         options = vision.FaceLandmarkerOptions(base_options=base_options,
-                                               output_face_blendshapes=True,
-                                               output_facial_transformation_matrixes=True,
-                                               num_faces=1)
+                                            output_face_blendshapes=True,
+                                            output_facial_transformation_matrixes=True,
+                                            num_faces=1)
         self.detector = vision.FaceLandmarker.create_from_options(options)
 
     @torch.no_grad()
@@ -369,8 +369,8 @@ class DLMesh(nn.Module):
                         if not video:
                             body_pose_6d = self.body_pose_6d + self.init_body_pose_6d
                         else:
-                            body_pose_6d_set = self.body_pose_6d_set + self.init_body_pose_6d_set
-                            body_pose_6d = body_pose_6d_set[frame_id]
+                            # body_pose_6d_set = self.body_pose_6d_set + self.init_body_pose_6d_set
+                            body_pose_6d = self.body_pose_6d_set[frame_id] + self.init_body_pose_6d_set[frame_id]
                 else:
                     if self.opt.use_full_pose:
                         full_pose_6d = self.full_pose_6d
