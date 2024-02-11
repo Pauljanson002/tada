@@ -305,7 +305,9 @@ class Trainer(object):
             if isinstance(self.guidance, NoGuidance):
                 # L2 loss between the body pose 6d and the running pose
                 loss += 1000 * F.mse_loss(self.model.init_body_pose_6d_set+self.model.body_pose_6d_set, self.running_body_pose)
-            
+            # if self.model.vpose:
+            #     # Constraint the size of the body pose 6d to norm 1
+            #     loss += torch.norm(self.model.body_pose_6d_set, dim=1).mean()
                 
             if self.opt.regularize_coeff > 0:
                 difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
@@ -598,8 +600,10 @@ class Trainer(object):
                 t_pred = pred_np.transpose(1,0,2,3)
                 t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
                 self.train_video_frames.append(t_pred)
-
-            self.scaler.scale(loss).backward()
+            if self.model.vpose:
+                self.scaler.scale(loss).backward(retain_graph=True)
+            else:
+                self.scaler.scale(loss).backward()
             temp_grads.append(self.model.body_pose_6d_set.grad)
             
             if not self.opt.accumulate:

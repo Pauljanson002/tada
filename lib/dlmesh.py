@@ -93,7 +93,7 @@ class DLMesh(nn.Module):
             self.smplx_faces = self.body_model.faces.astype(np.int32)
             
             if self.vpose:
-                vp , ps = load_model("/home/paulj/projects/TADA/V02_05",model_code=VPoser,remove_words_in_model_weights="vp_model",disable_grad=False)
+                vp , ps = load_model('/home/paulj/projects/TADA/V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=False)
                 self.body_prior = vp.to(self.device)
 
             param_file = "./data/init_body/fit_smplx_params.npz"
@@ -136,6 +136,7 @@ class DLMesh(nn.Module):
                     else:
                         if self.vpose:
                             self.init_body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
+                            #self.init_body_pose_6d_set = torch.randn(self.diving_body_pose.shape[0],32).to(self.device)
                             self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
 
                         else:
