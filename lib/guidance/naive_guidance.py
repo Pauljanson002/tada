@@ -114,6 +114,10 @@ class Naive(nn.Module):
         # Calculate l2 difference betwen the 
         
         loss = F.mse_loss(pred_rgbt,self.reference_videos[view_id])
+        
+        # Save rgbt and reference video
+        # torchvision.io.write_video(f"{view_id}.mp4",(255* pred_rgbt).permute(0,2,3,1).cpu().numpy(),fps=30)
+        # torchvision.io.write_video(f"{view_id}.mp4",(255* self.reference_videos[view_id]).permute(0,2,3,1).cpu().numpy(),fps=30)
 
         return loss
 

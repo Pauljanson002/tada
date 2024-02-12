@@ -22,6 +22,7 @@ training:
   ckpt: latest
   anneal_tex_reso: False
   optim: 'adam'
+  scheduler: True
   train_face_ratio: 0.0
   eval_interval: 1
   workspace: "/data/tada"

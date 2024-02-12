@@ -75,7 +75,10 @@ def main(cfg):
         else:  # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(5 * opt.lr), betas=(0.9, 0.99), eps=1e-15)
 
-        scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 1 ** min(x / opt.iters, 1))
+        if opt.scheduler == True:
+            scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 0.1 ** min(x / opt.iters, 1))
+        else:
+            scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 1 ** min(x / opt.iters, 1))
         return scheduler, optimizer
 
     model = DLMesh(cfg.model)
