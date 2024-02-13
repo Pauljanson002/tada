@@ -14,7 +14,7 @@ hydra:
     _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
     gres: "gpu:1"
     cpus_per_gpu: null
-    account: def-stpopa
+    account: rrg-eugenium
     additional_parameters: {}
     array_parallelism: 10
     setup: null
