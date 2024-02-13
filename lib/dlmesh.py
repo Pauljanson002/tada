@@ -93,7 +93,7 @@ class DLMesh(nn.Module):
             self.smplx_faces = self.body_model.faces.astype(np.int32)
             
             if self.vpose:
-                vp , ps = load_model('/home/paulj/projects/TADA/V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=True)
+                vp , ps = load_model('V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=True)
                 self.body_prior = vp.to(self.device)
             for p in self.body_model.parameters():
                 p.requires_grad = False
