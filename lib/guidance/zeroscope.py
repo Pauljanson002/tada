@@ -59,16 +59,26 @@ class ZeroScope(nn.Module):
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
         if "SLURM_JOB_ID" in os.environ:
             model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
+            self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
         else:
             model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
+            self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
-        self.vae = pipe.vae.eval()
-        self.tokenizer = pipe.tokenizer
-        self.text_encoder = pipe.text_encoder
-        self.unet = pipe.unet.eval()
+        
+        self.cpu_off_load = False
+        if self.cpu_off_load:
+            self.pipe.enable_sequential_cpu_offload()
+        
+        self.vae = self.pipe.vae.eval()
+        self.tokenizer = self.pipe.tokenizer
+        self.text_encoder = self.pipe.text_encoder
+        self.unet = self.pipe.unet.eval()
+        
+        for p in self.vae.parameters():
+            p.requires_grad = False
+        for p in self.unet.parameters():
+            p.requires_grad = False
 
         # Create model
         # self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
@@ -112,7 +122,7 @@ class ZeroScope(nn.Module):
             pred_rgbt = F.interpolate(pred_rgbt, (320, 576), mode='bilinear', align_corners=False)
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
             latents = self.encode_imgs(pred_rgbt)
-
+        
         # Before : latents = torch.mean(latents, keepdim=True, dim=0)
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
@@ -274,7 +284,7 @@ class ZeroScope(nn.Module):
         
         if normalize:
             imgs = 2 * imgs - 1
-
+        
         posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
         latents = posterior.sample() * self.vae.config.scaling_factor
 

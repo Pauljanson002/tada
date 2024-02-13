@@ -601,7 +601,7 @@ class Trainer(object):
                 t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
                 self.train_video_frames.append(t_pred)
             if self.model.vpose:
-                self.scaler.scale(loss).backward(retain_graph=True)
+                self.scaler.scale(loss).backward()
             else:
                 self.scaler.scale(loss).backward()
             temp_grads.append(self.model.body_pose_6d_set.grad)

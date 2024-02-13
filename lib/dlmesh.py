@@ -93,9 +93,10 @@ class DLMesh(nn.Module):
             self.smplx_faces = self.body_model.faces.astype(np.int32)
             
             if self.vpose:
-                vp , ps = load_model('V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=False)
+                vp , ps = load_model('V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=True)
                 self.body_prior = vp.to(self.device)
-
+            for p in self.body_model.parameters():
+                p.requires_grad = False
             param_file = "./data/init_body/fit_smplx_params.npz"
             smplx_params = dict(np.load(param_file))
             self.betas = torch.as_tensor(smplx_params["betas"]).to(self.device)
@@ -511,7 +512,7 @@ class DLMesh(nn.Module):
             light_d = (rays_o[0] + torch.randn(3, device=rays_o.device, dtype=torch.float))
             light_d = safe_normalize(light_d)
 
-        if self.opt.use_cubemap and (h == 512 or h == 800):
+        if self.opt.use_cubemap:
 
         # [-1.0,  1.0, -1.0,],
         # [-1.0, -1.0, -1.0,],
