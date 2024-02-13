@@ -158,7 +158,11 @@ class DLMesh(nn.Module):
                             torch.zeros(15, 6).to(self.device), # right hand
                         ],dim=0).reshape(1,-1)
                     else:
-                        self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
+                        if self.vpose:
+                            #self.init_body_pose_6d_set = torch.randn(self.diving_body_pose.shape[0],32).to(self.device)
+                            self.body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
+                        else:
+                            self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
 
             self.global_orient = torch.as_tensor(smplx_params["global_orient"]).to(self.device)
@@ -377,7 +381,10 @@ class DLMesh(nn.Module):
                     if self.opt.use_full_pose:
                         full_pose_6d = self.full_pose_6d
                     else:
-                        body_pose_6d = self.body_pose_6d
+                        if not video:
+                            body_pose_6d = self.body_pose_6d
+                        else:
+                            body_pose_6d = self.body_pose_6d_set[frame_id]
                 if self.opt.use_full_pose:
                     full_pose_6d = full_pose_6d.view(-1,6)
                     global_orient = matrix_to_axis_angle(rotation_6d_to_matrix(full_pose_6d[:1].view(-1,6))).view(1,-1)
