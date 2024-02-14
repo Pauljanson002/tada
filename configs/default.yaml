@@ -65,6 +65,7 @@ data:
   dir_text: True
   jitter_pose: False
   uniform_sphere_rate: 0.
+  side_view_only: False
 #  image: "images/xiaole_rgba.png"
 #  image: "../data/tada/ablation_head/Cinderella/validation/ep0069_rgba.png"
   image: ''
