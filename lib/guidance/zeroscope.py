@@ -119,7 +119,7 @@ class ZeroScope(nn.Module):
             latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
             latents = latents * 2 - 1
         else:
-            pred_rgbt = F.interpolate(pred_rgbt, (320, 576), mode='bilinear', align_corners=False)
+            pred_rgbt = F.interpolate(pred_rgbt, (256, 256), mode='bilinear', align_corners=False)
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
             latents = self.encode_imgs(pred_rgbt)
         
@@ -137,10 +137,11 @@ class ZeroScope(nn.Module):
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
-            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
-
+            with torch.autocast(device_type="cuda",dtype=self.precision_t):
+                noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
         # perform guidance (high scale from paper!)
-        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+        
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         # w(t), sigma_t^2
@@ -270,7 +271,6 @@ class ZeroScope(nn.Module):
 
         return imgs
 
-    @torch.cuda.amp.autocast(enabled=False)
     def encode_imgs(self, imgs,normalize = True):
         # imgs: [B, 3,F, H, W]
         if len(imgs.shape) == 4:
@@ -285,8 +285,9 @@ class ZeroScope(nn.Module):
         if normalize:
             imgs = 2 * imgs - 1
         
-        posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
-        latents = posterior.sample() * self.vae.config.scaling_factor
+        with torch.cuda.amp.autocast():
+            posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
+            latents = posterior.sample() * self.vae.config.scaling_factor
 
         latents = (
             latents[None, :]

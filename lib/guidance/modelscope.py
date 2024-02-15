@@ -380,12 +380,7 @@ if __name__ == '__main__':
     seed_everything(opt.seed)
 
     device = torch.device('cuda')
-    zs = ZeroScope(device,False,True)
-    
-    for view in ["front", "back", "side"]:
-        prompt = f"a {view} view 3D rendering of {opt.subject} {opt.action}, full-body"
-        vid = zs.prompt_to_video(prompt, height=opt.H, width=opt.W, num_inference_steps=opt.steps)[0]
-        breakpoint()
+
     # opt.negative
     
 
