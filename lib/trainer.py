@@ -580,8 +580,7 @@ class Trainer(object):
 
             self.optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast(enabled=self.fp16):
-                pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body,view_id=view_id)
+            pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body,view_id=view_id)
                 
             if self.global_step % 50 == 0:
                 if not video:
@@ -602,8 +601,10 @@ class Trainer(object):
                 self.train_video_frames.append(t_pred)
             if self.model.vpose:
                 self.scaler.scale(loss).backward()
+                #loss.backward()
             else:
-                self.scaler.scale(loss).backward()
+                #self.scaler.scale(loss).backward()
+                loss.backward()
             temp_grads.append(self.model.body_pose_6d_set.grad)
             
             if not self.opt.accumulate:
@@ -644,6 +645,7 @@ class Trainer(object):
             self.model.body_pose_6d_set.grad = temp_grads / self.local_step
             self.scaler.step(self.optimizer)
             self.scaler.update()
+            #self.optimizer.step()
 
             if self.scheduler_update_every_step:
                 self.lr_scheduler.step()
