@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
-from .perpneg_utils import weighted_perpendicular_aggregator
+
 
 
 class SpecifyGradient(torch.autograd.Function):
@@ -37,16 +37,14 @@ def seed_everything(seed):
 
 
 class ModelScope(nn.Module):
-    def __init__(self, device, fp16, vram_O, sd_version='2.1', hf_key=None, t_range=[0.02, 0.98],
-                 weighting_strategy='fantasia3d'):
+    def __init__(self, device, fp16, vram_O, t_range=[0.05, 0.95],
+                 weighting_strategy='sds'):
         super().__init__()
-
         self.device = device
-        self.sd_version = sd_version
         self.precision_t = torch.float16 if fp16 else torch.float32
         self.weighting_strategy = weighting_strategy
 
-        print(f'[INFO] loading stable diffusion...')
+        print(f'[INFO] loading Modelscope...')
 
         # if hf_key is not None:
         #     print(f'[INFO] using hugging face custom model key: {hf_key}')
@@ -59,17 +57,30 @@ class ModelScope(nn.Module):
         #     model_key = "runwayml/stable-diffusion-v1-5"
         # else:
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
-        
         if "SLURM_JOB_ID" in os.environ:
-            model_key = "/home/janson2/.cache/huggingface/hub/models--cerspense--zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=torch.float16,local_files_only=True)
+            model_key = "damo-vilab/text-to-video-ms-1.7b"
+            self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
+            self.scheduler = self.pipe.scheduler
         else:
-            model_key = "cerspense/zeroscope_v2_576w"
-            pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=torch.float16)
-        self.vae = pipe.vae
-        self.tokenizer = pipe.tokenizer
-        self.text_encoder = pipe.text_encoder
-        self.unet = pipe.unet
+            model_key = "damo-vilab/text-to-video-ms-1.7b"
+            self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,variant="fp16").to(self.device) # TODO Add variant
+            self.scheduler = self.pipe.scheduler
+        
+        self.cpu_off_load = False
+        if self.cpu_off_load:
+            self.pipe.enable_sequential_cpu_offload()
+        
+        self.vae = self.pipe.vae.eval()
+        self.tokenizer = self.pipe.tokenizer
+        self.text_encoder = self.pipe.text_encoder.eval()
+        self.unet = self.pipe.unet.eval()
+        
+        for p in self.vae.parameters():
+            p.requires_grad = False
+        for p in self.unet.parameters():
+            p.requires_grad = False
+        for p in self.text_encoder.parameters():
+            p.requires_grad = False
 
         # Create model
         # self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
@@ -77,13 +88,12 @@ class ModelScope(nn.Module):
         # self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
         # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
-        self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
+        
+        #TODO SJC (DDPM scheudler)
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
-
-        print(f'[INFO] loaded modelscope!')
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):
@@ -100,35 +110,41 @@ class ModelScope(nn.Module):
                                     max_length=self.tokenizer.model_max_length,
                                     truncation=True,
                                     return_tensors='pt')
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        with torch.no_grad():
+            text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         return text_embeddings
 
-    def train_step(self, text_embeddings, pred_rgb, guidance_scale=100, rgb_as_latents=False):
+    def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False,**kwargs): # pred_rgbt: [F, 3, H, W]
         if rgb_as_latents:
-            latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False)
+            latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
             latents = latents * 2 - 1
         else:
-            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
-            latents = self.encode_imgs(pred_rgb_512)
-
-        latents = torch.mean(latents, keepdim=True, dim=0)
+            pred_rgbt = F.interpolate(pred_rgbt, (256, 256), mode='bilinear', align_corners=False)
+            pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
+            latents = self.encode_imgs(pred_rgbt)
+        
+        # Before : latents = torch.mean(latents, keepdim=True, dim=0)
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+        
 
+        # TODO: SJC not implemented need to check what it is and whether it helps 
         # _t = time.time()
         with torch.no_grad():
+            t = torch.randint(self.min_step, self.max_step - 1, (latents.shape[0],), dtype=torch.long, device=self.device)
             # add noise
             noise = torch.randn_like(latents)
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
-            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+            with torch.autocast(device_type="cuda",dtype=self.precision_t):
+                noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+                noise_pred_uncond, noise_pred_text = noise_pred.float().chunk(2)
 
         # perform guidance (high scale from paper!)
-        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+        
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         # w(t), sigma_t^2
@@ -144,84 +160,87 @@ class ModelScope(nn.Module):
 
         grad = w * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
-
+        
+        # TODO: Do we need gradient clipping ? 
+        # if grad clip
+        # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
         loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
 
         return loss
 
-    def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
-                           save_guidance_path=None):
-        B = pred_rgb.shape[0]
-        K = (text_embeddings.shape[0] // B) - 1  # maximum number of prompts
+    # def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
+    #                        save_guidance_path=None):
+    #     B = pred_rgb.shape[0]
+    #     K = (text_embeddings.shape[0] // B) - 1  # maximum number of prompts
 
-        if as_latent:
-            latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
-        else:
-            # interp to 512x512 to be fed into vae.
-            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
-            # encode image into latents with vae, requires grad!
-            latents = self.encode_imgs(pred_rgb_512)
+    #     if as_latent:
+    #         latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
+    #     else:
+    #         # interp to 512x512 to be fed into vae.
+    #         pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+    #         # encode image into latents with vae, requires grad!
+    #         latents = self.encode_imgs(pred_rgb_512)
 
-        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+    #     # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
+    #     t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
 
-        # predict the noise residual with unet, NO grad!
-        with torch.no_grad():
-            # add noise
-            noise = torch.randn_like(latents)
-            latents_noisy = self.scheduler.add_noise(latents, noise, t)
-            # pred noise
-            latent_model_input = torch.cat([latents_noisy] * (1 + K))
-            tt = torch.cat([t] * (1 + K))
-            unet_output = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+    #     # predict the noise residual with unet, NO grad!
+    #     with torch.no_grad():
+    #         # add noise
+    #         noise = torch.randn_like(latents)
+    #         latents_noisy = self.scheduler.add_noise(latents, noise, t)
+    #         # pred noise
+    #         latent_model_input = torch.cat([latents_noisy] * (1 + K))
+    #         tt = torch.cat([t] * (1 + K))
+    #         unet_output = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
 
-            # perform guidance (high scale from paper!)
-            noise_pred_uncond, noise_pred_text = unet_output[:B], unet_output[B:]
-            delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
-            noise_pred = noise_pred_uncond + guidance_scale * weighted_perpendicular_aggregator(delta_noise_preds,
-                                                                                                weights, B)
+    #         # perform guidance (high scale from paper!)
+    #         noise_pred_uncond, noise_pred_text = unet_output[:B], unet_output[B:]
+    #         delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
+    #         noise_pred = noise_pred_uncond + guidance_scale * weighted_perpendicular_aggregator(delta_noise_preds,
+    #                                                                                             weights, B)
 
-        # w(t), sigma_t^2
-        w = (1 - self.alphas[t])
-        grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
-        grad = torch.nan_to_num(grad)
+    #     # w(t), sigma_t^2
+    #     w = (1 - self.alphas[t])
+    #     grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
+    #     grad = torch.nan_to_num(grad)
 
-        if save_guidance_path:
-            with torch.no_grad():
-                if as_latent:
-                    pred_rgb_512 = self.decode_latents(latents)
+    #     if save_guidance_path:
+    #         with torch.no_grad():
+    #             if as_latent:
+    #                 pred_rgb_512 = self.decode_latents(latents)
 
-                # visualize predicted denoised image
-                # The following block of code is equivalent to `predict_start_from_noise`...
-                # see zero123_utils.py's version for a simpler implementation.
-                alphas = self.scheduler.alphas.to(latents)
-                total_timesteps = self.max_step - self.min_step + 1
-                index = total_timesteps - t.to(latents.device) - 1
-                b = len(noise_pred)
-                a_t = alphas[index].reshape(b, 1, 1, 1).to(self.device)
-                sqrt_one_minus_alphas = torch.sqrt(1 - alphas)
-                sqrt_one_minus_at = sqrt_one_minus_alphas[index].reshape((b, 1, 1, 1)).to(self.device)
-                pred_x0 = (latents_noisy - sqrt_one_minus_at * noise_pred) / a_t.sqrt()  # current prediction for x_0
-                result_hopefully_less_noisy_image = self.decode_latents(pred_x0.to(latents.type(self.precision_t)))
+    #             # visualize predicted denoised image
+    #             # The following block of code is equivalent to `predict_start_from_noise`...
+    #             # see zero123_utils.py's version for a simpler implementation.
+    #             alphas = self.scheduler.alphas.to(latents)
+    #             total_timesteps = self.max_step - self.min_step + 1
+    #             index = total_timesteps - t.to(latents.device) - 1
+    #             b = len(noise_pred)
+    #             a_t = alphas[index].reshape(b, 1, 1, 1).to(self.device)
+    #             sqrt_one_minus_alphas = torch.sqrt(1 - alphas)
+    #             sqrt_one_minus_at = sqrt_one_minus_alphas[index].reshape((b, 1, 1, 1)).to(self.device)
+    #             pred_x0 = (latents_noisy - sqrt_one_minus_at * noise_pred) / a_t.sqrt()  # current prediction for x_0
+    #             result_hopefully_less_noisy_image = self.decode_latents(pred_x0.to(latents.type(self.precision_t)))
 
-                # visualize noisier image
-                result_noisier_image = self.decode_latents(latents_noisy.to(pred_x0).type(self.precision_t))
+    #             # visualize noisier image
+    #             result_noisier_image = self.decode_latents(latents_noisy.to(pred_x0).type(self.precision_t))
 
-                # all 3 input images are [1, 3, H, W], e.g. [1, 3, 512, 512]
-                viz_images = torch.cat([pred_rgb_512, result_noisier_image, result_hopefully_less_noisy_image], dim=0)
-                save_image(viz_images, save_guidance_path)
+    #             # all 3 input images are [1, 3, H, W], e.g. [1, 3, 512, 512]
+    #             viz_images = torch.cat([pred_rgb_512, result_noisier_image, result_hopefully_less_noisy_image], dim=0)
+    #             save_image(viz_images, save_guidance_path)
 
-        # loss = SpecifyGradient.apply(latents, grad)
-        loss = 0.5 * F.mse_loss(latents.float(), (latents - grad).detach(), reduction='sum') / latents.shape[0]
+    #     # loss = SpecifyGradient.apply(latents, grad)
+    #     loss = 0.5 * F.mse_loss(latents.float(), (latents - grad).detach(), reduction='sum') / latents.shape[0]
 
-        return loss
+    #     return loss
 
-    def produce_latents(self, text_embeddings, height=512, width=512, num_inference_steps=50, guidance_scale=7.5,
+    def produce_latents(self, text_embeddings, height=320, width=576, num_inference_steps=40, guidance_scale=100,num_frames=5,
                         latents=None):
 
         if latents is None:
-            latents = torch.randn((text_embeddings.shape[0] // 2, self.unet.in_channels, height // 8, width // 8),
+            latents = torch.randn((text_embeddings.shape[0] // 2, self.unet.in_channels, num_frames, height // 8, width // 8),
                                   device=self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
@@ -255,16 +274,65 @@ class ModelScope(nn.Module):
 
         return imgs
 
-    def encode_imgs(self, imgs):
-        # imgs: [B, 3, H, W]
-        imgs = 2 * imgs - 1
-        posterior = self.vae.encode(imgs).latent_dist
-        latents = posterior.sample() * self.vae.config.scaling_factor
+    def encode_imgs(self, imgs,normalize = True):
+        # imgs: [B, 3,F, H, W]
+        if len(imgs.shape) == 4:
+            print("Image is provided instead of a video adding time = 1")
+            imgs = imgs[:,:,None]
+            
+        batch_size,channels, num_frames,height , width = imgs.shape
+        
+        imgs = imgs.permute(0,2,1,3,4).reshape(batch_size*num_frames,channels,height,width)
+        input_dtype = imgs.dtype
+        
+        if normalize:
+            imgs = 2 * imgs - 1
+        with torch.cuda.amp.autocast():
+            posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
+            latents = posterior.sample() * self.vae.config.scaling_factor
 
+        latents = (
+            latents[None, :]
+            .reshape(
+                (
+                    batch_size,
+                    num_frames,
+                    -1,
+                )
+                + latents.shape[2:]
+            )
+            .permute(0, 2, 1, 3, 4)
+        )
         return latents
+    
+    @torch.cuda.amp.autocast(enabled=False)
+    def decode_latents(self, latents):
+        # TODO: Make decoding align with previous version
+        latents = 1 / self.vae.config.scaling_factor * latents
 
-    def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,
-                      guidance_scale=7.5, latents=None):
+        batch_size, channels, num_frames, height, width = latents.shape
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+
+        image = self.vae.decode(latents).sample
+        video = (
+            image[None, :]
+            .reshape(
+                (
+                    batch_size,
+                    num_frames,
+                    -1,
+                )
+                + image.shape[2:]
+            )
+            .permute(0, 2, 1, 3, 4)
+        )
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        video = video.float()
+        return video
+    
+
+    def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,num_frames=5,
+                    guidance_scale=7.5, latents=None):
 
         if isinstance(prompts, str):
             prompts = [prompts]
@@ -278,9 +346,9 @@ class ModelScope(nn.Module):
         text_embeds = torch.cat([uncon_embeds, text_embeds])
 
         # Text embeds -> img latents
-        latents = self.produce_latents(text_embeds, height=height, width=width, latents=latents,
-                                       num_inference_steps=num_inference_steps,
-                                       guidance_scale=guidance_scale)  # [1, 4, 64, 64]
+        latents = self.produce_latents(text_embeds, height=height, width=width, latents=latents,num_frames=num_frames,
+                                    num_inference_steps=num_inference_steps,
+                                    guidance_scale=guidance_scale)  # [1, 4, 64, 64]
 
         # Img latents -> imgs
         imgs = self.decode_latents(latents)  # [1, 3, 512, 512]
@@ -297,37 +365,29 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prompt', type=str)
+    parser.add_argument('--subject', type=str, default="man")
+    parser.add_argument('--action', default='bad anatomy', type=str)
     parser.add_argument('--negative', default='bad anatomy', type=str)
     # parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'],
     #                     help="stable diffusion version")
     # parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
-    parser.add_argument('-H', type=int, default=512)
-    parser.add_argument('-W', type=int, default=512)
+    parser.add_argument('-H', type=int, default=320)
+    parser.add_argument('-W', type=int, default=576)
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--steps', type=int, default=50)
+    parser.add_argument('--steps', type=int, default=40)
     opt = parser.parse_args()
 
     seed_everything(opt.seed)
 
     device = torch.device('cuda')
-
-    sd = StableDiffusion(device, opt.sd_version, opt.hf_key)
-
-    subjects = open("./data/prompt/fictional.txt", 'r').read().splitlines()[:5]
+    zs = ZeroScope(device,False,True)
+    
+    for view in ["front", "back", "side"]:
+        prompt = f"a {view} view 3D rendering of {opt.subject} {opt.action}, full-body"
+        vid = zs.prompt_to_video(prompt, height=opt.H, width=opt.W, num_inference_steps=opt.steps)[0]
+        breakpoint()
     # opt.negative
-    imgs = [
-        np.vstack([
-            sd.prompt_to_img(f"a 3D rendering of the mouth of {prompt}, {v}", opt.negative, opt.H, opt.W, opt.steps)[0]
-            for v in ["front view"
-                      # "back view", "side view",
-                      # "overhead view"
-                      ]
-        ])
-        for prompt in subjects
-    ]
-
-    cv2.imwrite("superman.png", np.hstack(imgs)[..., ::-1])
+    
 
     # visualize image
     # plt.imshow(imgs[0])
