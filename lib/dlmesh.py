@@ -119,6 +119,8 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
                 self.diving_body_pose = self.diving_body_pose[:1, :]
                 self.diving_body_pose = np.repeat(self.diving_body_pose, self.num_frames, axis=0)
+            elif self.opt.initalize_pose == "zero":
+                self.diving_body_pose = np.zeros((self.num_frames, 63))
             self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
             self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:
@@ -160,7 +162,10 @@ class DLMesh(nn.Module):
                     else:
                         if self.vpose:
                             #self.init_body_pose_6d_set = torch.randn(self.diving_body_pose.shape[0],32).to(self.device)
-                            self.body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
+                            if self.opt.initialize_pose == "zero":
+                                self.body_pose_6d_set = torch.zeros(self.diving_body_pose.shape).to(self.device)
+                            else:
+                                self.body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
                         else:
                             self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
