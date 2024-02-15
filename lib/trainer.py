@@ -302,6 +302,11 @@ class Trainer(object):
             else:
                 loss = 0
             
+            if self.opt.constraint_latent_weight > 0 and self.model.vpose:
+                constraint_loss =  self.opt.constraint_latent_weight * torch.norm(self.model.body_pose_6d_set, dim=1).mean()
+                loss+= constraint_loss
+                loss_dict["constraint_latent"] = constraint_loss.item()
+            
             if isinstance(self.guidance, NoGuidance):
                 # L2 loss between the body pose 6d and the running pose
                 loss += 1000 * F.mse_loss(self.model.init_body_pose_6d_set+self.model.body_pose_6d_set, self.running_body_pose)
