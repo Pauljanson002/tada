@@ -61,6 +61,9 @@ def main(cfg):
         elif opt.name == "naive":
             from lib.guidance.naive_guidance import Naive
             return Naive()
+        elif opt.name == "modelscope":
+            from lib.guidance.modelscope import ModelScope
+            return ModelScope(device, cfg.fp16, opt.vram_O)
         else:
             from lib.guidance.clip import CLIP
             return CLIP(device)
