@@ -61,7 +61,6 @@ class Trainer(object):
         self.metrics = metrics
         self.local_rank = local_rank
         self.world_size = world_size
-
         self.workspace = os.path.join(opt.workspace)
         self.ema_decay = ema_decay
         self.fp16 = fp16
@@ -291,10 +290,10 @@ class Trainer(object):
             
 
             if self.opt.rgb_sds:
-                loss = self.guidance.train_step(dir_text_z, video_frames,view_id=kwargs.get("view_id",0)).mean()
+                loss = self.guidance.train_step(dir_text_z, video_frames,view_id=kwargs.get("view_id",0),guidance_scale=self.opt.guidance_scale).mean()
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
-                loss = self.guidance.train_step(dir_text_z, normal_frames).mean()
+                loss = self.guidance.train_step(dir_text_z, normal_frames,guidance_scale=self.opt.guidance_scale).mean()
                 loss_dict["normal_sds"] = loss.item()
             elif self.opt.mean_sds:
                 loss = self.guidance.train_step(dir_text_z, torch.cat([normal_frames, video_frames.detach()])).mean()

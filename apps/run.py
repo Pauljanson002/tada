@@ -54,7 +54,7 @@ def main(cfg):
             return IF(device, opt.vram_O)
         elif opt.name == "zeroscope":
             from lib.guidance.zeroscope import ZeroScope
-            return ZeroScope(device,cfg.fp16, opt.vram_O)
+            return ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end])
         elif opt.name == "no_guidance":
             from lib.guidance.no_guidance import NoGuidance
             return NoGuidance()
@@ -63,7 +63,7 @@ def main(cfg):
             return Naive()
         elif opt.name == "modelscope":
             from lib.guidance.modelscope import ModelScope
-            return ModelScope(device, cfg.fp16, opt.vram_O)
+            return ModelScope(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end])
         else:
             from lib.guidance.clip import CLIP
             return CLIP(device)
