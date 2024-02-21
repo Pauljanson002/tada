@@ -7,7 +7,6 @@ test: False
 model:
   use_6d: True
   use_full_pose: False
-  model_change: True
   lock_geo: False
   lock_beta: True
   lock_pose: False
