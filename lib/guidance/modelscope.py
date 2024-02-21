@@ -59,7 +59,7 @@ class ModelScope(nn.Module):
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
         if "SLURM_JOB_ID" in os.environ:
             model_key = "damo-vilab/text-to-video-ms-1.7b"
-            self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
+            self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,variant="fp16",local_files_only=True).to(self.device)
             self.scheduler = self.pipe.scheduler
         else:
             model_key = "damo-vilab/text-to-video-ms-1.7b"
