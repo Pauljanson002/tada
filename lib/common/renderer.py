@@ -48,7 +48,7 @@ class Renderer(torch.nn.Module):
         B = mvp.shape[0]
         v_clip = torch.bmm(F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1),
                            torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
-
+        # translate the by 1.0 
         res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
         rast, rast_db = dr.rasterize(self.glctx, v_clip, mesh.f, res)
 

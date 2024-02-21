@@ -573,6 +573,10 @@ class Trainer(object):
         video = self.model.opt.video
         self.local_step = 0
         temp_grads = []
+        
+        if self.opt.set_global_time_step:
+            self.guidance.global_time_step = torch.randint(self.guidance.min_step, self.guidance.max_step + 1, (1,), dtype=torch.long, device=self.device)
+        
         for view_id,data in enumerate(loader):
 
             # if view_id in [0,2]:

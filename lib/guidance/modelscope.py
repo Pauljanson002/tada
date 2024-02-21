@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-
+logger = logging.get_logger(__name__)
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
@@ -45,7 +45,7 @@ class ModelScope(nn.Module):
         self.weighting_strategy = weighting_strategy
 
         print(f'[INFO] loading Modelscope...')
-
+        self.global_time_step = None
         # if hf_key is not None:
         #     print(f'[INFO] using hugging face custom model key: {hf_key}')
         #     model_key = hf_key
@@ -130,9 +130,14 @@ class ModelScope(nn.Module):
         
 
         # TODO: SJC not implemented need to check what it is and whether it helps 
+        if self.global_time_step is None:
+            t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+        else:
+            logger.debug(f"Using global time step: {self.global_time_step}")
+            t = self.global_time_step
         # _t = time.time()
         with torch.no_grad():
-            t = torch.randint(self.min_step, self.max_step - 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+
             # add noise
             noise = torch.randn_like(latents)
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
