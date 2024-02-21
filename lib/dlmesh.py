@@ -26,6 +26,9 @@ from human_body_prior.models.vposer_model import VPoser
 
 import torchvision
 import pickle
+
+import logging
+logger = logging.getLogger(__name__)
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers, bias=True):
         super().__init__()
@@ -107,7 +110,7 @@ class DLMesh(nn.Module):
             self.body_pose = self.body_pose.view(-1, 3)
             self.body_pose[[0, 1, 3, 4, 6, 7], :2] *= 0
             self.body_pose = self.body_pose.view(1, -1)
-            
+            self.add_fake_movement = self.opt.add_fake_movement
             if self.opt.initialize_pose == "diving":
                 self.diving_body_pose = pickle.load(open("4d/poses/diving.pkl", "rb"))["body_pose"]
             elif self.opt.initialize_pose == "running":
@@ -629,6 +632,10 @@ class DLMesh(nn.Module):
             smplx_landmarks_frame_list = []
             for i in range(frame_size):
                 pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train,frame_id=i)
+                if self.add_fake_movement:
+                    #logger.debug(f"Adding fake movement to frame {i}")
+                    pr_mesh.v -= torch.tensor([0.0,0,0.25]).cuda()
+                    pr_mesh.v += torch.tensor([0.0,0,0.025 * i]).cuda() 
                 rgb,normal,alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
                                             mlp_texture=self.mlp_texture, is_train=is_train)
                 rgb = rgb * alpha + (1 - alpha) * bg_color

@@ -53,6 +53,7 @@ mesh.apply_transform(trimesh.transformations.rotation_matrix(
 mesh_2 = trimesh.Trimesh(output_2.vertices[0].cpu().detach().numpy(), body_model.faces)
 mesh_2.apply_transform(trimesh.transformations.rotation_matrix(
     np.radians(90), [1, 0, 0]))
+mesh_2.vertices += np.array([-0.5, 0, 0])
 
 
 scene = pyrender.Scene(bg_color=[0.0, 0.0, 0.0, 0.0],

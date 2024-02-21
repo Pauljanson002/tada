@@ -27,6 +27,8 @@ def main(cfg):
             cfg.training.workspace = os.path.join(hydra_singleton.sweep.dir,hydra_singleton.job.id)
     else:
         cfg.training.workspace  = hydra_singleton.run.dir
+    
+    # if debug set the logger to verbos in hydra
     # save config to workspace
     if False: #disabling this for now
         os.makedirs(os.path.join(cfg.training.workspace, cfg.text,cfg.action), exist_ok=True)

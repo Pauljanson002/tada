@@ -3,7 +3,7 @@ defaults:
 name: 'default'
 seed: 2222
 stage: "geo"
-fp16: False
+fp16: True
 text: ""
 action: "sitting"
 negative: "unrealistic,ugly,bad anatomy,not real,not realistic,not human,not a person,not a human"
@@ -14,8 +14,8 @@ guidance:
   vram_O: True
   sd_version: '2.1'
   hf_key: None
-  t_start: 0.05
-  t_end: 0.95
+  t_start: 0.10
+  t_end: 0.99
 training:
   iters: 500
   albedo_iters: 10000
@@ -24,7 +24,7 @@ training:
   ckpt: latest
   anneal_tex_reso: False
   optim: 'adam'
-  scheduler: True
+  scheduler: False
   train_face_ratio: 0.0
   eval_interval: 1
   workspace: "/data/tada"
@@ -42,9 +42,10 @@ training:
   normal_sds: False
   mean_sds: False
   accumulate: True
-  regularize_coeff: 0.0
+  regularize_coeff: 1.0
   constraint_latent_weight: 0.1
   guidance_scale: 100
+  set_global_time_step: True
 data:
   h: 256
   w: 256
@@ -91,7 +92,9 @@ model:
   num_frames: 14
   use_cubemap: True
   # Only for one experiment
-  initialize_pose: "diving"
+  initialize_pose: "zero"
+  add_fake_movement: True
+  model_change: False
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'
