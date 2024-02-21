@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
 # from .perpneg_utils import weighted_perpendicular_aggregator
-
+logger = logging.get_logger(__name__)
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
@@ -45,7 +45,7 @@ class StableDiffusion(nn.Module):
         self.sd_version = sd_version
         self.precision_t = torch.float16 if fp16 else torch.float32
         self.weighting_strategy = weighting_strategy
-
+        self.global_time_step = None
         print(f'[INFO] loading stable diffusion...')
 
         if hf_key is not None:
@@ -103,7 +103,11 @@ class StableDiffusion(nn.Module):
         latents = torch.mean(latents, keepdim=True, dim=0) # does nothing specific
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+        if self.global_time_step is None:
+            t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+        else:
+            logger.debug(f"Using global time step: {self.global_time_step}")
+            t = self.global_time_step
 
         # _t = time.time()
         with torch.no_grad():

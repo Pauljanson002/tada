@@ -166,7 +166,10 @@ class DLMesh(nn.Module):
                         if self.vpose:
                             #self.init_body_pose_6d_set = torch.randn(self.diving_body_pose.shape[0],32).to(self.device)
                             if self.opt.initialize_pose == "zero":
-                                self.body_pose_6d_set = torch.zeros([self.num_frames,32]).to(self.device)
+                                if not self.opt.video:
+                                    self.body_pose_6d = torch.zeros([1,32]).to(self.device)
+                                else:
+                                    self.body_pose_6d_set = torch.zeros([self.num_frames,32]).to(self.device)
                             else:
                                 self.body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
                         else:
@@ -230,8 +233,10 @@ class DLMesh(nn.Module):
                 if self.opt.use_full_pose:
                     self.full_pose_6d = nn.Parameter(self.full_pose_6d)
                 else:
-                    #self.body_pose_6d = nn.Parameter(self.body_pose_6d)
-                    self.body_pose_6d_set = nn.Parameter(self.body_pose_6d_set)
+                    if not self.opt.video:
+                        self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+                    else:
+                        self.body_pose_6d_set = nn.Parameter(self.body_pose_6d_set)
             else:
                 self.body_pose = nn.Parameter(self.body_pose)
             
@@ -355,9 +360,11 @@ class DLMesh(nn.Module):
                 if self.opt.use_full_pose:
                     params.append({'params': self.full_pose_6d, 'lr': 0.05})
                 else:
-                    # params.append({'params': self.body_pose_6d, 'lr': 0.05})
-                    params.append({'params': self.body_pose_6d_set, 'lr': lr})
-            else:
+                    if not self.opt.video:
+                        params.append({'params': self.body_pose_6d, 'lr': lr})
+                    else:
+                        params.append({'params': self.body_pose_6d_set, 'lr': lr})
+            else:   
                 params.append({'params': self.body_pose, 'lr': 0.05})
             #!!!! Not training Jaw pose for now 
             # params.append({'params': self.jaw_pose, 'lr': 0.05})

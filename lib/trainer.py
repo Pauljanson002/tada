@@ -458,7 +458,10 @@ class Trainer(object):
                 self.evaluate_one_epoch(valid_loader)
                 #self.save_checkpoint(full=False, best=True)
                 if self.write_train_video:
-                    all_preds = np.stack(self.train_video_frames, axis=0)
+                    if self.model.opt.video:
+                        all_preds = np.stack(self.train_video_frames, axis=0)
+                    else:
+                        all_preds = np.concatenate(self.train_video_frames, axis=0)
                     imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
                                     macro_block_size=1)
             if self.opt.debug:
@@ -469,7 +472,10 @@ class Trainer(object):
 
         self.logger.info(f" training takes {(end_t - start_t) / 60:.4f} minutes.")
         if self.write_train_video:
-            all_preds = np.stack(self.train_video_frames, axis=0)
+            if self.model.opt.video:
+                all_preds = np.stack(self.train_video_frames, axis=0)
+            else:
+                all_preds = np.concatenate(self.train_video_frames, axis=0)
             imageio.mimwrite(os.path.join(self.workspace,"results", f'train_vis.mp4'), all_preds, fps=25, quality=5,
                             macro_block_size=1)
             self.logger.info(f"==> Finished writing train video.")
@@ -613,7 +619,10 @@ class Trainer(object):
             else:
                 #self.scaler.scale(loss).backward()
                 loss.backward()
-            temp_grads.append(self.model.body_pose_6d_set.grad)
+            if self.model.opt.video:
+                temp_grads.append(self.model.body_pose_6d_set.grad)
+            else:
+                temp_grads.append(self.model.body_pose_6d.grad)
             
             if not self.opt.accumulate:
                 self.scaler.step(self.optimizer)
@@ -637,10 +646,9 @@ class Trainer(object):
 
                 if self.scheduler_update_every_step:
                     pbar.set_description(
-                        f"loss={loss_val:.4f} , Reg loss{loss_dict['reg_loss']:.4f}), "
-                        f"lr={self.optimizer.param_groups[0]['lr']:.6f}, ")
+                        "loss={:.4f} , Reg loss{:.4f}, lr={:.6f}, ".format(loss_val, loss_dict.get("reg_loss", 0), self.optimizer.param_groups[0]['lr']))
                 else:
-                    pbar.set_description(f"loss={loss_val:.4f} , Reg loss{loss_dict['reg_loss']:.4f})")
+                    pbar.set_description("loss={:.4f} , Reg loss{:.4f})".format(loss_val, loss_dict.get("reg_loss", 0)))
                 pbar.update(loader.batch_size)
             # if self.opt.debug:
             #     break
@@ -650,7 +658,10 @@ class Trainer(object):
         # Normalize the gradient by the number of steps
         if self.opt.accumulate:
             temp_grads = sum(temp_grads)
-            self.model.body_pose_6d_set.grad = temp_grads / self.local_step
+            if self.model.opt.video:
+                self.model.body_pose_6d_set.grad = temp_grads / self.local_step
+            else:
+                self.model.body_pose_6d.grad = temp_grads / self.local_step
             self.scaler.step(self.optimizer)
             self.scaler.update()
             #self.optimizer.step()
@@ -749,16 +760,15 @@ class Trainer(object):
                         pbar.update(loader.batch_size)
                 if self.write_train_video:
                     if not self.model.opt.video:
-                        pred_rgb_only = preds[:,:512, :]
-                        pred_rgb_resized = cv2.resize(pred_rgb_only, (256, 256))
-                        self.train_video_frames.append(pred_rgb_resized)
+                        pred_rgb_only = (preds[:,256:, :].cpu().numpy() * 255).astype(np.uint8)
+                        self.train_video_frames.append(pred_rgb_only)
                     else:
                         pred_np = (pred * 255).astype(np.uint8)
                         t_pred = pred_np.transpose(1,0,2,3)
                         t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
                         self.train_video_frames.append(t_pred)
                         
-        if not self.model.opt.video:
+        if not self.model.opt.video and self.epoch % 10 ==0:
             save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             cv2.imwrite(save_path, np.hstack(vis_frames))
