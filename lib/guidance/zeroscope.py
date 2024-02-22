@@ -38,7 +38,7 @@ def seed_everything(seed):
 
 
 class ZeroScope(nn.Module):
-    def __init__(self, device, fp16, vram_O, t_range=[0.02, 0.98],
+    def __init__(self, device, fp16, vram_O, t_range=[0.02, 0.98],loss_type=None,
                  weighting_strategy='sds'):
         super().__init__()
         self.device = device

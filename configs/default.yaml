@@ -16,6 +16,7 @@ guidance:
   hf_key: None
   t_start: 0.10
   t_end: 0.99
+  loss_type: "standard"
 training:
   iters: 500
   albedo_iters: 10000

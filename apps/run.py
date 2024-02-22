@@ -50,13 +50,13 @@ def main(cfg):
         opt = cfg.guidance
         if opt.name == 'sd':
             from lib.guidance.sd import StableDiffusion
-            return StableDiffusion(device, cfg.fp16, opt.vram_O, opt.sd_version)
+            return StableDiffusion(device, cfg.fp16, opt.vram_O, opt.sd_version,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type)
         elif opt.name == 'if':
             from lib.guidance.deepfloyd import IF
             return IF(device, opt.vram_O)
         elif opt.name == "zeroscope":
             from lib.guidance.zeroscope import ZeroScope
-            return ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end])
+            return ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
         elif opt.name == "no_guidance":
             from lib.guidance.no_guidance import NoGuidance
             return NoGuidance()
@@ -65,7 +65,7 @@ def main(cfg):
             return Naive()
         elif opt.name == "modelscope":
             from lib.guidance.modelscope import ModelScope
-            return ModelScope(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end])
+            return ModelScope(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
         else:
             from lib.guidance.clip import CLIP
             return CLIP(device)

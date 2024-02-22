@@ -37,10 +37,9 @@ def seed_everything(seed):
 
 
 class StableDiffusion(nn.Module):
-    def __init__(self, device, fp16, vram_O, sd_version='2.1', hf_key=None, t_range=[0.02, 0.98],
+    def __init__(self, device, fp16, vram_O, sd_version='2.1', hf_key=None, t_range=[0.02, 0.98],loss_type=None,
                  weighting_strategy='fantasia3d'):
         super().__init__()
-
         self.device = device
         self.sd_version = sd_version
         self.precision_t = torch.float16 if fp16 else torch.float32
@@ -48,6 +47,8 @@ class StableDiffusion(nn.Module):
         self.global_time_step = None
         print(f'[INFO] loading stable diffusion...')
 
+        self.loss_type = loss_type
+        
         if hf_key is not None:
             print(f'[INFO] using hugging face custom model key: {hf_key}')
             model_key = hf_key
@@ -121,7 +122,13 @@ class StableDiffusion(nn.Module):
 
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        
+        if self.loss_type == "classifier":
+            logger.debug(f"Using classifier SDS loss")
+            noise_pred = noise_pred_text
+            noise = noise_pred_uncond
+        else:
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         # w(t), sigma_t^2
         if self.weighting_strategy == "sds":
