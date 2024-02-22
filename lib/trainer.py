@@ -350,6 +350,12 @@ class Trainer(object):
                     loss = self.guidance.train_step(dir_text_z, image_annel).mean()
                 else:
                     loss = 0
+                
+                if self.opt.constraint_latent_weight > 0 and self.model.vpose:
+                    constraint_loss =  self.opt.constraint_latent_weight * torch.norm(self.model.body_pose_6d, dim=1).mean()
+                    loss+= constraint_loss
+                    loss_dict["constraint_latent"] = constraint_loss.item()    
+                
                 if not self.dpt:
                     # normal sds
                     if self.opt.normal_sds:
