@@ -58,7 +58,6 @@ class DLMesh(nn.Module):
         super(DLMesh, self).__init__()
 
         self.opt = opt
-
         self.num_remeshing = 1
         self.vpose = True
         self.renderer = Renderer()
@@ -184,6 +183,10 @@ class DLMesh(nn.Module):
             self.faces_list, self.dense_lbs_weights, self.uniques, self.vt, self.ft = self.get_init_body()
 
             N = self.dense_lbs_weights.shape[0]
+            
+            self.pose_mlp = MLP(32,32,128,5)
+            self.pose_mlp = self.pose_mlp.to(self.device)
+            
 
         # background network
         if not self.opt.skip_bg:
@@ -356,7 +359,10 @@ class DLMesh(nn.Module):
                 params.append({'params': self.expression, 'lr': 0.05})
 
         if not self.opt.lock_pose:
-            if self.opt.use_6d:
+            
+            if self.opt.use_pose_mlp:
+                params.append({'params': self.pose_mlp.parameters(), 'lr': lr})
+            elif self.opt.use_6d:
                 if self.opt.use_full_pose:
                     params.append({'params': self.full_pose_6d, 'lr': 0.05})
                 else:
@@ -381,8 +387,19 @@ class DLMesh(nn.Module):
     def get_mesh(self, is_train,frame_id=0):
         # os.makedirs("./results/pipline/obj/", exist_ok=True)
         video = self.opt.video
+        global_orient = self.global_orient
+        jaw_pose = None
+        left_eye_pose = None
+        right_eye_pose = None
+        left_hand_pose = None
+        right_hand_pose = None
         if not self.opt.lock_geo:
-            if self.opt.use_6d:
+            if self.opt.use_pose_mlp: 
+                if not video:
+                    body_pose = self.body_prior.decode(self.pose_mlp(self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                else:
+                    body_pose = self.body_prior.decode(self.pose_mlp(self.body_pose_6d_set[frame_id].unsqueeze(0)))['pose_body'].contiguous().view(1,-1)
+            elif self.opt.use_6d:
                 if self.opt.model_change:
                     if self.opt.use_full_pose:
                         full_pose_6d = self.full_pose_6d + self.init_full_pose_6d
