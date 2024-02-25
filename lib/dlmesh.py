@@ -43,6 +43,16 @@ class MLP(nn.Module):
                                  self.dim_out if l == num_layers - 1 else self.dim_hidden, bias=bias))
 
         self.net = nn.ModuleList(net)
+        
+        # init weights with kaiming normalization
+        for l in range(num_layers):
+            if l != num_layers - 1:
+                nn.init.kaiming_normal_(self.net[l].weight, mode='fan_in', nonlinearity='relu')
+            else:
+                nn.init.zeros_(self.net[l].weight)
+            if bias:
+                nn.init.zeros_(self.net[l].bias)
+
 
     def forward(self, x):
         for l in range(self.num_layers):
@@ -140,9 +150,12 @@ class DLMesh(nn.Module):
                         self.full_pose_6d = torch.zeros(self.init_full_pose_6d.shape).to(self.device) 
                     else:
                         if self.vpose:
-                            self.init_body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
-                            #self.init_body_pose_6d_set = torch.randn(self.diving_body_pose.shape[0],32).to(self.device)
-                            self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
+                            if not self.opt.video:
+                                self.body_pose_6d = torch.zeros([1,32]).to(self.device)
+                            else:
+                                self.init_body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
+                                #self.init_body_pose_6d_set = torch.randn(self.diving_body_pose.shape[0],32).to(self.device)
+                                self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
 
                         else:
                             self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
@@ -184,7 +197,7 @@ class DLMesh(nn.Module):
 
             N = self.dense_lbs_weights.shape[0]
             
-            self.pose_mlp = MLP(32,32,128,5)
+            self.pose_mlp = MLP(32,32,8,3)
             self.pose_mlp = self.pose_mlp.to(self.device)
             
 
@@ -219,7 +232,10 @@ class DLMesh(nn.Module):
                 self.encoder_geo, in_dim_geo = get_encoder('hashgrid', interpolation='smoothstep')
                 self.geo_net = MLP(in_dim_geo, 1, 32, 2)
             else:
-                self.v_offsets = nn.Parameter(torch.zeros(N, 1))
+                if self.opt.use_pose_mlp:
+                    self.v_offsets =torch.zeros(N, 1,requires_grad=False).to(self.device)
+                else:
+                    self.v_offsets = nn.Parameter(torch.zeros(N, 3))
 
             # shape
             if not self.lock_beta:
@@ -232,16 +248,17 @@ class DLMesh(nn.Module):
                 self.expression = nn.Parameter(self.expression)
             # self.jaw_pose = nn.Parameter(self.jaw_pose)
         if not self.opt.lock_pose:
-            if self.opt.use_6d:
-                if self.opt.use_full_pose:
-                    self.full_pose_6d = nn.Parameter(self.full_pose_6d)
-                else:
-                    if not self.opt.video:
-                        self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+            if not self.opt.use_pose_mlp:
+                if self.opt.use_6d:
+                    if self.opt.use_full_pose:
+                        self.full_pose_6d = nn.Parameter(self.full_pose_6d)
                     else:
-                        self.body_pose_6d_set = nn.Parameter(self.body_pose_6d_set)
-            else:
-                self.body_pose = nn.Parameter(self.body_pose)
+                        if not self.opt.video:
+                            self.body_pose_6d = nn.Parameter(self.body_pose_6d)
+                        else:
+                            self.body_pose_6d_set = nn.Parameter(self.body_pose_6d_set)
+                else:
+                    self.body_pose = nn.Parameter(self.body_pose)
             
 
         # Create an FaceLandmarker object.
@@ -396,8 +413,19 @@ class DLMesh(nn.Module):
         if not self.opt.lock_geo:
             if self.opt.use_pose_mlp: 
                 if not video:
-                    body_pose = self.body_prior.decode(self.pose_mlp(self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    if self.opt.model_change:
+                        prediction = self.pose_mlp(self.body_pose_6d)
+                        body_pose = self.body_prior.decode((prediction + self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    else:
+                        prediction = self.pose_mlp(self.body_pose_6d)
+                        body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                 else:
+                    if self.opt.model_change:
+                        prediction = self.pose_mlp(self.body_pose_6d)
+                        body_pose = self.body_prior.decode((prediction + self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    else:
+                        prediction = self.pose_mlp(self.body_pose_6d)
+                        body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     body_pose = self.body_prior.decode(self.pose_mlp(self.body_pose_6d_set[frame_id].unsqueeze(0)))['pose_body'].contiguous().view(1,-1)
             elif self.opt.use_6d:
                 if self.opt.model_change:
@@ -491,7 +519,7 @@ class DLMesh(nn.Module):
         else:
             mesh = Mesh(base=self.mesh)
             mesh.set_albedo(self.raw_albedo)
-        return mesh, landmarks
+        return mesh, landmarks ,prediction
 
     @torch.no_grad()
     def get_mesh_center_scale(self, phrase):
@@ -655,7 +683,7 @@ class DLMesh(nn.Module):
             normal_frame_list = []
             smplx_landmarks_frame_list = []
             for i in range(frame_size):
-                pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train,frame_id=i)
+                pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train,frame_id=i)
                 if self.add_fake_movement:
                     #logger.debug(f"Adding fake movement to frame {i}")
                     pr_mesh.v -= torch.tensor([0.0,0,0.25]).cuda()
@@ -677,7 +705,7 @@ class DLMesh(nn.Module):
 
                 
         else:
-            pr_mesh, smplx_landmarks = self.get_mesh(is_train=is_train)
+            pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train)
             rgb, normal, alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
                                             mlp_texture=self.mlp_texture, is_train=is_train)
             rgb = rgb * alpha + (1 - alpha) * bg_color
@@ -697,6 +725,7 @@ class DLMesh(nn.Module):
                 "alpha_vid": alpha,
                 "normal_vid": normalt,
                 "smplx_landmarks_vid": smplx_landmarkst,
+                "prediction": prediction
             }
         else:
             return {
@@ -704,4 +733,5 @@ class DLMesh(nn.Module):
                 "alpha": alpha,
                 "normal": normal,
                 "smplx_landmarks": smplx_landmarks,
+                "prediction": prediction
             }

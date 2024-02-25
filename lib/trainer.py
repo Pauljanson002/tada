@@ -303,9 +303,14 @@ class Trainer(object):
                 loss = 0
             
             if self.opt.constraint_latent_weight > 0 and self.model.vpose:
-                constraint_loss =  self.opt.constraint_latent_weight * torch.norm(self.model.body_pose_6d_set, dim=1).mean()
-                loss+= constraint_loss
-                loss_dict["constraint_latent"] = constraint_loss.item()
+                if self.model.use_pose_mlp:
+                    constraint_loss = self.opt.constraint_latent_weight * torch.norm(out=["prediction"], dim=1).mean()
+                    loss+= constraint_loss
+                    loss_dict["constraint_latent"] = constraint_loss.item()
+                else:
+                    constraint_loss =  self.opt.constraint_latent_weight * torch.norm(self.model.body_pose_6d_set, dim=1).mean()
+                    loss+= constraint_loss
+                    loss_dict["constraint_latent"] = constraint_loss.item()
             
             if isinstance(self.guidance, NoGuidance):
                 # L2 loss between the body pose 6d and the running pose
@@ -455,7 +460,6 @@ class Trainer(object):
                     # body_center, body_scale = self.model.get_mesh_center_scale("body")
                     # train_loader.dataset.body_center = body_center
                     # train_loader.dataset.body_scale = body_scale.item()
-
             self.train_one_epoch(train_loader)
 
             if (self.workspace is not None and self.local_rank == 0) and False: # Disabling this for now
@@ -585,8 +589,7 @@ class Trainer(object):
                              bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         video = self.model.opt.video
         self.local_step = 0
-        temp_grads = []
-        
+        temp_grads = {n_p:0 for n_p , p in self.model.named_parameters() if p.requires_grad}
         if self.opt.set_global_time_step:
             self.guidance.global_time_step = torch.randint(self.guidance.min_step, self.guidance.max_step + 1, (1,), dtype=torch.long, device=self.device)
         
@@ -626,11 +629,11 @@ class Trainer(object):
             else:
                 #self.scaler.scale(loss).backward()
                 loss.backward()
-            if self.model.opt.video:
-                temp_grads.append(self.model.body_pose_6d_set.grad)
-            else:
-                temp_grads.append(self.model.body_pose_6d.grad)
-            
+            if self.opt.accumulate:
+                for n_p,p in self.model.named_parameters():
+                    if p.requires_grad and p.grad is not None:
+                        temp_grads[n_p] += p.grad
+
             if not self.opt.accumulate:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
@@ -657,6 +660,7 @@ class Trainer(object):
                 else:
                     pbar.set_description("loss={:.4f} , Reg loss{:.4f})".format(loss_val, loss_dict.get("reg_loss", 0)))
                 pbar.update(loader.batch_size)
+
             # if self.opt.debug:
             #     break
         
@@ -664,11 +668,9 @@ class Trainer(object):
         #TODO : Find a permanent solution
         # Normalize the gradient by the number of steps
         if self.opt.accumulate:
-            temp_grads = sum(temp_grads)
-            if self.model.opt.video:
-                self.model.body_pose_6d_set.grad = temp_grads / self.local_step
-            else:
-                self.model.body_pose_6d.grad = temp_grads / self.local_step
+            for n_p,p in self.model.named_parameters():
+                if p.requires_grad:
+                    p.grad = temp_grads[n_p] / self.local_step
             self.scaler.step(self.optimizer)
             self.scaler.update()
             #self.optimizer.step()
@@ -706,7 +708,11 @@ class Trainer(object):
                 self.lr_scheduler.step()
 
         self.logger.info(f"==> Finished Epoch {self.epoch}.")
-
+        # log with debug level the norm of weights and biases of the pose mlp
+        norm_dict = {n: p.norm().item() for n, p in self.model.named_parameters() if "pose_mlp" in n}
+        norm_dict["epoch"] = self.epoch
+        self.logger.debug(f"==> Pose MLP norm: {norm_dict}")
+        wandb.log(norm_dict)
     def evaluate_one_epoch(self, loader, name=None):
         self.logger.info(f"++> Evaluate {self.workspace} at epoch {self.epoch} ...")
 

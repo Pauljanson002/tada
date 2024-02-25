@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from transformers import CLIPTextModel, CLIPTokenizer, logging
-from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler, StableDiffusionPipeline
+from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler, StableDiffusionPipeline,DiffusionPipeline
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
@@ -32,8 +32,8 @@ class SpecifyGradient(torch.autograd.Function):
 def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
 
 
 class StableDiffusion(nn.Module):
@@ -48,7 +48,7 @@ class StableDiffusion(nn.Module):
         print(f'[INFO] loading stable diffusion...')
 
         self.loss_type = loss_type
-        
+        # self.sd_version = "xl" #TODO: XL support need to be implemented
         if hf_key is not None:
             print(f'[INFO] using hugging face custom model key: {hf_key}')
             model_key = hf_key
@@ -58,16 +58,27 @@ class StableDiffusion(nn.Module):
             model_key = "stabilityai/stable-diffusion-2-base"
         elif self.sd_version == '1.5':
             model_key = "runwayml/stable-diffusion-v1-5"
+        elif self.sd_version == "xl":
+            model_key = "stabilityai/stable-diffusion-xl-base-1.0"
         else:
             raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
+        
+        self.pipe = DiffusionPipeline.from_pretrained(model_key, torch_dtype=self.precision_t).to(self.device)
+        
+        
+        self.scheduler = self.pipe.scheduler
+        self.vae = self.pipe.vae
+        self.unet = self.pipe.unet
+        self.text_encoder = self.pipe.text_encoder
+        self.tokenizer = self.pipe.tokenizer
 
         # Create model
-        self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
-        self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
-        self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
-        self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
+        # self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
+        # self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
+        # self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
+        # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
-        self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
+        # self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
@@ -85,12 +96,13 @@ class StableDiffusion(nn.Module):
             text_embeddings: torch.Tensor
         """
         # Tokenize text and get embeddings
-        text_input = self.tokenizer(prompt,
-                                    padding='max_length',
-                                    max_length=self.tokenizer.model_max_length,
-                                    truncation=True,
-                                    return_tensors='pt')
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        with torch.cuda.amp.autocast():
+            text_input = self.tokenizer(prompt,
+                                        padding='max_length',
+                                        max_length=self.tokenizer.model_max_length,
+                                        truncation=True,
+                                        return_tensors='pt')
+            text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         return text_embeddings
 
@@ -118,7 +130,8 @@ class StableDiffusion(nn.Module):
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
-            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+            with torch.cuda.amp.autocast():
+                noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
 
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -255,9 +268,12 @@ class StableDiffusion(nn.Module):
         return imgs
 
     def encode_imgs(self, imgs):
+        
         # imgs: [B, 3, H, W]
+        
         imgs = 2 * imgs - 1
-        posterior = self.vae.encode(imgs).latent_dist
+        with torch.cuda.amp.autocast():
+            posterior = self.vae.encode(imgs).latent_dist
         latents = posterior.sample() * self.vae.config.scaling_factor
 
         return latents
