@@ -197,7 +197,7 @@ class DLMesh(nn.Module):
 
             N = self.dense_lbs_weights.shape[0]
             
-            self.pose_mlp = MLP(32,32,8,3)
+            self.pose_mlp = MLP(32,32,8,5)
             self.pose_mlp = self.pose_mlp.to(self.device)
             
 
