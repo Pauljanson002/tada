@@ -303,8 +303,8 @@ class Trainer(object):
                 loss = 0
             
             if self.opt.constraint_latent_weight > 0 and self.model.vpose:
-                if self.model.use_pose_mlp:
-                    constraint_loss = self.opt.constraint_latent_weight * torch.norm(out=["prediction"], dim=1).mean()
+                if self.model.opt.use_pose_mlp:
+                    constraint_loss = self.opt.constraint_latent_weight * torch.norm(out["prediction"]).mean()
                     loss+= constraint_loss
                     loss_dict["constraint_latent"] = constraint_loss.item()
                 else:

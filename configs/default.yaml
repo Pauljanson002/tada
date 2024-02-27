@@ -43,7 +43,7 @@ training:
   normal_sds: False
   mean_sds: False
   accumulate: True
-  regularize_coeff: 1.0
+  regularize_coeff: 0.0
   constraint_latent_weight: 0.1
   guidance_scale: 100
   set_global_time_step: True

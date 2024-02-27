@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 torch.autograd.set_detect_anomaly(False)
 
 
+
 @hydra.main(version_base=None,config_path="../configs", config_name="tada_wo_dpt.yaml")
 def main(cfg):
     # cfg = argparse.Namespace(**OmegaConf.to_container(cfg))
