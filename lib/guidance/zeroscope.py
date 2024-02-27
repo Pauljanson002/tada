@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from transformers import CLIPTextModel, CLIPTokenizer, logging
 from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler, DiffusionPipeline
-
+import torchvision
 # suppress partial model loading warning
 logging.set_verbosity_error()
 import os
@@ -163,6 +163,14 @@ class ZeroScope(nn.Module):
         grad = w * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
         
+        if False:
+            with torch.no_grad():
+                grad_visual = self.decode_latents(grad)
+                grad_visual = grad_visual.cpu()[0].permute(1,2,3,0)
+                grad_visual = (grad_visual * 255).to(torch.uint8)
+                torchvision.io.write_video("grad_visual.mp4", grad_visual, 5)
+                breakpoint()
+        
         # TODO: Do we need gradient clipping ? 
         # if grad clip
         # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
@@ -265,16 +273,7 @@ class ZeroScope(nn.Module):
 
         return latents
 
-    def decode_latents(self, latents):
 
-        latents = 1 / self.vae.config.scaling_factor * latents
-
-        with torch.no_grad():
-            imgs = self.vae.decode(latents).sample
-
-        imgs = (imgs / 2 + 0.5).clamp(0, 1)
-
-        return imgs
 
     def encode_imgs(self, imgs,normalize = True):
         # imgs: [B, 3,F, H, W]
@@ -308,7 +307,7 @@ class ZeroScope(nn.Module):
         )
         return latents.to(input_dtype)
     
-    @torch.cuda.amp.autocast(enabled=False)
+    @torch.cuda.amp.autocast(enabled=True)
     def decode_latents(self, latents):
         # TODO: Make decoding align with previous version
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -317,6 +316,7 @@ class ZeroScope(nn.Module):
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         image = self.vae.decode(latents).sample
+        image = (image * 2 + 0.5).clamp(0, 1)
         video = (
             image[None, :]
             .reshape(
@@ -329,8 +329,8 @@ class ZeroScope(nn.Module):
             )
             .permute(0, 2, 1, 3, 4)
         )
+    
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        video = video.float()
         return video
     
 

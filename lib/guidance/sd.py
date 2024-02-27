@@ -1,8 +1,15 @@
 import cv2
 import numpy as np
 from transformers import CLIPTextModel, CLIPTokenizer, logging
-from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler, StableDiffusionPipeline,DiffusionPipeline
-
+from diffusers import (
+    AutoencoderKL,
+    UNet2DConditionModel,
+    PNDMScheduler,
+    DDIMScheduler,
+    StableDiffusionPipeline,
+    DiffusionPipeline,
+)
+import torchvision
 # suppress partial model loading warning
 logging.set_verbosity_error()
 
@@ -11,20 +18,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd
+
 # from .perpneg_utils import weighted_perpendicular_aggregator
 logger = logging.get_logger(__name__)
+
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
     @custom_fwd
     def forward(ctx, input_tensor, gt_grad):
         ctx.save_for_backward(gt_grad)
-        return torch.zeros([1], device=input_tensor.device, dtype=input_tensor.dtype)  # dummy loss value
+        return torch.zeros(
+            [1], device=input_tensor.device, dtype=input_tensor.dtype
+        )  # dummy loss value
 
     @staticmethod
     @custom_bwd
     def backward(ctx, grad):
-        gt_grad, = ctx.saved_tensors
+        (gt_grad,) = ctx.saved_tensors
         batch_size = len(gt_grad)
         return gt_grad / batch_size, None
 
@@ -37,35 +48,47 @@ def seed_everything(seed):
 
 
 class StableDiffusion(nn.Module):
-    def __init__(self, device, fp16, vram_O, sd_version='2.1', hf_key=None, t_range=[0.02, 0.98],loss_type=None,
-                 weighting_strategy='fantasia3d'):
+    def __init__(
+        self,
+        device,
+        fp16,
+        vram_O,
+        sd_version="2.1",
+        hf_key=None,
+        t_range=[0.02, 0.98],
+        loss_type=None,
+        weighting_strategy="fantasia3d",
+    ):
         super().__init__()
         self.device = device
         self.sd_version = sd_version
         self.precision_t = torch.float16 if fp16 else torch.float32
         self.weighting_strategy = weighting_strategy
         self.global_time_step = None
-        print(f'[INFO] loading stable diffusion...')
+        print(f"[INFO] loading stable diffusion...")
 
         self.loss_type = loss_type
         # self.sd_version = "xl" #TODO: XL support need to be implemented
         if hf_key is not None:
-            print(f'[INFO] using hugging face custom model key: {hf_key}')
+            print(f"[INFO] using hugging face custom model key: {hf_key}")
             model_key = hf_key
-        elif self.sd_version == '2.1':
+        elif self.sd_version == "2.1":
             model_key = "stabilityai/stable-diffusion-2-1-base"
-        elif self.sd_version == '2.0':
+        elif self.sd_version == "2.0":
             model_key = "stabilityai/stable-diffusion-2-base"
-        elif self.sd_version == '1.5':
+        elif self.sd_version == "1.5":
             model_key = "runwayml/stable-diffusion-v1-5"
         elif self.sd_version == "xl":
             model_key = "stabilityai/stable-diffusion-xl-base-1.0"
         else:
-            raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
-        
-        self.pipe = DiffusionPipeline.from_pretrained(model_key, torch_dtype=self.precision_t).to(self.device)
-        
-        
+            raise ValueError(
+                f"Stable-diffusion version {self.sd_version} not supported."
+            )
+
+        self.pipe = DiffusionPipeline.from_pretrained(
+            model_key, torch_dtype=self.precision_t
+        ).to(self.device)
+
         self.scheduler = self.pipe.scheduler
         self.vae = self.pipe.vae
         self.unet = self.pipe.unet
@@ -79,12 +102,17 @@ class StableDiffusion(nn.Module):
         # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
         # self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
+        
+        # turn off gradinet for all parameters
+        for param in self.parameters():
+            param.requires_grad = False
+        
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
 
-        print(f'[INFO] loaded stable diffusion!')
+        print(f"[INFO] loaded stable diffusion!")
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):
@@ -97,27 +125,41 @@ class StableDiffusion(nn.Module):
         """
         # Tokenize text and get embeddings
         with torch.cuda.amp.autocast():
-            text_input = self.tokenizer(prompt,
-                                        padding='max_length',
-                                        max_length=self.tokenizer.model_max_length,
-                                        truncation=True,
-                                        return_tensors='pt')
+            text_input = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
             text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         return text_embeddings
 
-    def train_step(self, text_embeddings, pred_rgb, guidance_scale=100, rgb_as_latents=False):
+    def train_step(
+        self, text_embeddings, pred_rgb, guidance_scale=100, rgb_as_latents=False
+    ):
         if rgb_as_latents:
-            latents = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False)
+            latents = F.interpolate(
+                pred_rgb, (64, 64), mode="bilinear", align_corners=False
+            )
             latents = latents * 2 - 1
         else:
-            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+            pred_rgb_512 = F.interpolate(
+                pred_rgb, (512, 512), mode="bilinear", align_corners=False
+            )
             latents = self.encode_imgs(pred_rgb_512)
-        latents = torch.mean(latents, keepdim=True, dim=0) # does nothing specific
+        latents = torch.mean(latents, keepdim=True, dim=0)  # does nothing specific
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         if self.global_time_step is None:
-            t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+            t = torch.randint(
+                self.min_step,
+                self.max_step + 1,
+                (latents.shape[0],),
+                dtype=torch.long,
+                device=self.device,
+            )
         else:
             logger.debug(f"Using global time step: {self.global_time_step}")
             t = self.global_time_step
@@ -131,17 +173,21 @@ class StableDiffusion(nn.Module):
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
             with torch.cuda.amp.autocast():
-                noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+                noise_pred = self.unet(
+                    latent_model_input, tt, encoder_hidden_states=text_embeddings
+                ).sample
 
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-        
+
         if self.loss_type == "classifier":
             logger.debug(f"Using classifier SDS loss")
             noise_pred = noise_pred_text
             noise = noise_pred_uncond
         else:
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            noise_pred = noise_pred_uncond + guidance_scale * (
+                noise_pred_text - noise_pred_uncond
+            )
 
         # w(t), sigma_t^2
         if self.weighting_strategy == "sds":
@@ -158,7 +204,60 @@ class StableDiffusion(nn.Module):
         grad = torch.nan_to_num(grad)
 
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
-        loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
+
+        save_guidance_path =  None
+        if save_guidance_path is not None:
+            with torch.no_grad():
+                if rgb_as_latents:
+                    pred_rgb_512 = self.decode_latents(latents)
+
+                # visualize predicted denoised image
+                # The following block of code is equivalent to `predict_start_from_noise`...
+                # see zero123_utils.py's version for a simpler implementation.
+                alphas = self.scheduler.alphas.to(latents)
+                total_timesteps = self.max_step - self.min_step + 1
+                index = total_timesteps - t.to(latents.device) - 1
+                b = len(noise_pred)
+                a_t = alphas[index].reshape(b, 1, 1, 1).to(self.device)
+                sqrt_one_minus_alphas = torch.sqrt(1 - alphas)
+                sqrt_one_minus_at = (
+                    sqrt_one_minus_alphas[index].reshape((b, 1, 1, 1)).to(self.device)
+                )
+                pred_x0 = (
+                    latents_noisy - sqrt_one_minus_at * noise_pred
+                ) / a_t.sqrt()  # current prediction for x_0
+                result_hopefully_less_noisy_image = self.decode_latents(
+                    pred_x0
+                )
+
+                # visualize noisier image
+                result_noisier_image = self.decode_latents(
+                    latents_noisy.to(pred_x0).type(self.precision_t)
+                )
+                
+                # Visualize grad image
+                grad_image = self.decode_latents(grad)
+                
+
+                # TODO: also denoise all-the-way
+
+                # all 3 input images are [1, 3, H, W], e.g. [1, 3, 512, 512]
+                viz_images = torch.cat(
+                    [
+                        pred_rgb_512,
+                        result_noisier_image,
+                        result_hopefully_less_noisy_image,
+                        grad_image,
+                    ],
+                    dim=0,
+                )
+                torchvision.utils.save_image(viz_images, save_guidance_path)
+
+        loss = (
+            0.5
+            * F.mse_loss(latents, (latents - grad).detach(), reduction="sum")
+            / latents.shape[0]
+        )
 
         return loss
 
@@ -229,30 +328,48 @@ class StableDiffusion(nn.Module):
 
     #     return loss
 
-    def produce_latents(self, text_embeddings, height=512, width=512, num_inference_steps=50, guidance_scale=7.5,
-                        latents=None):
+    def produce_latents(
+        self,
+        text_embeddings,
+        height=512,
+        width=512,
+        num_inference_steps=50,
+        guidance_scale=7.5,
+        latents=None,
+    ):
 
         if latents is None:
-            latents = torch.randn((text_embeddings.shape[0] // 2, self.unet.in_channels, height // 8, width // 8),
-                                  device=self.device)
+            latents = torch.randn(
+                (
+                    text_embeddings.shape[0] // 2,
+                    self.unet.in_channels,
+                    height // 8,
+                    width // 8,
+                ),
+                device=self.device,
+            )
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        with torch.autocast('cuda'):
+        with torch.autocast("cuda"):
             for i, t in enumerate(self.scheduler.timesteps):
                 # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
                 latent_model_input = torch.cat([latents] * 2)
 
                 # predict the noise residual
                 with torch.no_grad():
-                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
+                    noise_pred = self.unet(
+                        latent_model_input, t, encoder_hidden_states=text_embeddings
+                    )["sample"]
 
                 # perform guidance
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = noise_pred_text + guidance_scale * (
+                    noise_pred_text - noise_pred_uncond
+                )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents)['prev_sample']
+                latents = self.scheduler.step(noise_pred, t, latents)["prev_sample"]
 
         return latents
 
@@ -261,16 +378,17 @@ class StableDiffusion(nn.Module):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         with torch.no_grad():
-            imgs = self.vae.decode(latents).sample
+            with torch.cuda.amp.autocast():
+                imgs = self.vae.decode(latents).sample
 
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
 
         return imgs
 
     def encode_imgs(self, imgs):
-        
+
         # imgs: [B, 3, H, W]
-        
+
         imgs = 2 * imgs - 1
         with torch.cuda.amp.autocast():
             posterior = self.vae.encode(imgs).latent_dist
@@ -278,8 +396,16 @@ class StableDiffusion(nn.Module):
 
         return latents
 
-    def prompt_to_img(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,
-                      guidance_scale=7.5, latents=None):
+    def prompt_to_img(
+        self,
+        prompts,
+        negative_prompts="",
+        height=512,
+        width=512,
+        num_inference_steps=50,
+        guidance_scale=7.5,
+        latents=None,
+    ):
 
         if isinstance(prompts, str):
             prompts = [prompts]
@@ -293,51 +419,77 @@ class StableDiffusion(nn.Module):
         text_embeds = torch.cat([uncon_embeds, text_embeds])
 
         # Text embeds -> img latents
-        latents = self.produce_latents(text_embeds, height=height, width=width, latents=latents,
-                                       num_inference_steps=num_inference_steps,
-                                       guidance_scale=guidance_scale)  # [1, 4, 64, 64]
+        latents = self.produce_latents(
+            text_embeds,
+            height=height,
+            width=width,
+            latents=latents,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+        )  # [1, 4, 64, 64]
 
         # Img latents -> imgs
         imgs = self.decode_latents(latents)  # [1, 3, 512, 512]
 
         # Img to Numpy
         imgs = imgs.detach().cpu().permute(0, 2, 3, 1).numpy()
-        imgs = (imgs * 255).round().astype('uint8')
+        imgs = (imgs * 255).round().astype("uint8")
 
         return imgs
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
     import matplotlib.pyplot as plt
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prompt', type=str)
-    parser.add_argument('--negative', default='bad anatomy', type=str)
-    parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'],
-                        help="stable diffusion version")
-    parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
-    parser.add_argument('-H', type=int, default=512)
-    parser.add_argument('-W', type=int, default=512)
-    parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--steps', type=int, default=50)
+    parser.add_argument("--prompt", type=str)
+    parser.add_argument("--negative", default="bad anatomy,no subject, half visible,part visible", type=str)
+    parser.add_argument(
+        "--sd_version",
+        type=str,
+        default="2.1",
+        choices=["1.5", "2.0", "2.1"],
+        help="stable diffusion version",
+    )
+    parser.add_argument(
+        "--hf_key",
+        type=str,
+        default=None,
+        help="hugging face Stable diffusion model key",
+    )
+    parser.add_argument("-H", type=int, default=256)
+    parser.add_argument("-W", type=int, default=256)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=999)
     opt = parser.parse_args()
 
     seed_everything(opt.seed)
 
-    device = torch.device('cuda')
+    device = torch.device("cuda")
 
     sd = StableDiffusion(device, opt.sd_version, opt.hf_key)
 
-    subjects = open("./data/prompt/fictional.txt", 'r').read().splitlines()[:5]
+    # subjects = open("./data/prompt/fictional.txt", 'r').read().splitlines()[:5]
+    subjects = ["man"]
     # opt.negative
     imgs = [
-        np.vstack([
-            sd.prompt_to_img(f"a 3D rendering of the mouth of {prompt}, {v}", opt.negative, opt.H, opt.W, opt.steps)[0]
-            for v in ["front view"
-                      # "back view", "side view",
-                      # "overhead view"
-                      ]
-        ])
+        np.vstack(
+            [
+                sd.prompt_to_img(
+                    f"a shot of {v} view of a {prompt} running in the beach, full-body ",
+                    opt.negative,
+                    opt.H,
+                    opt.W,
+                    opt.steps,
+                )[0]
+                for v in [
+                    "side view", "back view",
+                    "side view",
+                    # "overhead view"
+                ]
+            ]
+        )
         for prompt in subjects
     ]
 
