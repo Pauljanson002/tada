@@ -623,12 +623,7 @@ class Trainer(object):
                 t_pred = pred_np.transpose(1,0,2,3)
                 t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
                 self.train_video_frames.append(t_pred)
-            if self.model.vpose:
-                self.scaler.scale(loss).backward()
-                #loss.backward()
-            else:
-                #self.scaler.scale(loss).backward()
-                loss.backward()
+            self.scaler.scale(loss).backward()
             if self.opt.accumulate:
                 for n_p,p in self.model.named_parameters():
                     if p.requires_grad and p.grad is not None:

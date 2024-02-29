@@ -85,7 +85,7 @@ class DLMesh(nn.Module):
 
         self.opt = opt
         self.num_remeshing = 1
-        self.vpose = True
+        self.vpose = self.opt.vpose
         self.renderer = Renderer()
         self.glctx = dr.RasterizeCudaContext()
         self.device = torch.device("cuda")
@@ -215,7 +215,10 @@ class DLMesh(nn.Module):
             N = self.dense_lbs_weights.shape[0]
 
             if self.opt.video:
-                self.pose_mlp = MLP(8,32,8,5)
+                if self.vpose:
+                    self.pose_mlp = MLP(8,32,8,5)
+                else:
+                    self.pose_mlp = MLP(8,126,8,5)
                 self.time_embeddings = sinusoidal_embedding(8,self.num_frames).to(self.device)
             else:
                 self.pose_mlp = MLP(32,32,8,5)
@@ -451,7 +454,10 @@ class DLMesh(nn.Module):
                         prediction = self.pose_mlp(self.time_embeddings[frame_id]) + self.init_body_pose_6d_set[frame_id]
                     else:
                         prediction = self.pose_mlp(self.time_embeddings[frame_id])
-                    body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    if self.vpose:
+                        body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    else:
+                        body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(prediction.view(-1,21,6))).view(1,-1)
             elif self.opt.use_6d:
                 if self.opt.model_change:
                     if self.opt.use_full_pose:
