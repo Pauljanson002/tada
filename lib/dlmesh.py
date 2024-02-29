@@ -31,12 +31,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def sinusoidal_embedding(n_channels, dim):
-    pe = torch.FloatTensor([[p / (10000 ** (2 * (i // 2) / dim)) for i in range(dim)]
-                            for p in range(n_channels)])
+def sinusoidal_embedding(dim,frame_limit):
+    pe = torch.FloatTensor(
+        [
+            [p / (10000 ** (2 * (i // 2) / dim)) for i in range(dim)]
+            for p in range(frame_limit)
+        ]
+    )
     pe[:, 0::2] = torch.sin(pe[:, 0::2])
     pe[:, 1::2] = torch.cos(pe[:, 1::2])
-    return pe.unsqueeze(0)
+    return pe
+
 
 class MLP(nn.Module):
     def __init__(self, dim_in, dim_out, dim_hidden, num_layers, bias=True):
@@ -69,6 +74,8 @@ class MLP(nn.Module):
             if l != self.num_layers - 1:
                 x = F.relu(x, inplace=True)
         return x
+
+    
 
 
 class DLMesh(nn.Module):
@@ -191,13 +198,9 @@ class DLMesh(nn.Module):
                                     self.body_pose_6d = torch.zeros([1,32]).to(self.device)
                                 else:
                                     self.body_pose_6d_set = torch.zeros([self.num_frames,32]).to(self.device)
-                                    self.positional_embedding = sinusoidal_embedding(
-                                        self.num_frames, 32
-                                    ).to(self.device).squeeze(0)
-
                             else:
                                 self.body_pose_6d_set = self.body_prior.encode(self.diving_body_pose).mean # latent space
-                                self.positional_embedding = sinusoidal_embedding(self.num_frames, 32)
+
                         else:
                             self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
@@ -211,7 +214,11 @@ class DLMesh(nn.Module):
 
             N = self.dense_lbs_weights.shape[0]
 
-            self.pose_mlp = MLP(32,32,8,5)
+            if self.opt.video:
+                self.pose_mlp = MLP(8,32,8,5)
+                self.time_embeddings = sinusoidal_embedding(8,self.num_frames).to(self.device)
+            else:
+                self.pose_mlp = MLP(32,32,8,5)
             self.pose_mlp = self.pose_mlp.to(self.device)
 
         # background network
@@ -430,17 +437,20 @@ class DLMesh(nn.Module):
                         prediction = self.pose_mlp(self.body_pose_6d)
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                 else:
-                    if frame_id == 0:
-                        logger.debug("Updating the intermediate state")
-                        input_to_mlp = self.body_pose_6d_set + self.positional_embedding
-                        self.intermediate = self.pose_mlp(input_to_mlp)
+                    # if frame_id == 0:
+                    #     logger.debug("Updating the intermediate state")
+                    #     input_to_mlp = self.body_pose_6d_set + self.positional_embedding
+                    #     self.intermediate = self.pose_mlp(input_to_mlp)
                     # if self.opt.model_change:
                     #     prediction = self.pose_mlp(self.body_pose_6d)
                     #     body_pose = self.body_prior.decode((prediction + self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     # else:
                     #     prediction = self.pose_mlp(self.body_pose_6d)
                     #     body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
-                    prediction = self.intermediate[frame_id]
+                    if self.opt.model_change:
+                        prediction = self.pose_mlp(self.time_embeddings[frame_id]) + self.init_body_pose_6d_set[frame_id]
+                    else:
+                        prediction = self.pose_mlp(self.time_embeddings[frame_id])
                     body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
             elif self.opt.use_6d:
                 if self.opt.model_change:
