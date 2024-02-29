@@ -320,7 +320,10 @@ class Trainer(object):
             #     loss += torch.norm(self.model.body_pose_6d_set, dim=1).mean()
                 
             if self.opt.regularize_coeff > 0:
-                difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
+                if self.model.opt.use_pose_mlp:
+                    difference = out["prediction"][1:] - out["prediction"][:-1]
+                else:
+                    difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
                 regularization_term = torch.sum(difference * difference)
                 loss += self.opt.regularize_coeff * regularization_term
                 loss_dict["reg_loss"] = regularization_term.item()

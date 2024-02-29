@@ -713,6 +713,7 @@ class DLMesh(nn.Module):
             rgb_frame_list = []
             normal_frame_list = []
             smplx_landmarks_frame_list = []
+            prediction_list = []
             for i in range(frame_size):
                 pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train,frame_id=i)
                 if self.add_fake_movement:
@@ -730,9 +731,11 @@ class DLMesh(nn.Module):
                 rgb_frame_list.append(rgb)
                 normal_frame_list.append(normal)
                 smplx_landmarks_frame_list.append(smplx_landmarks)
+                prediction_list.append(prediction)
             rgbt = torch.stack(rgb_frame_list,dim=0)
             normalt = torch.stack(normal_frame_list,dim=0)
             smplx_landmarkst = torch.stack(smplx_landmarks_frame_list,dim=0)
+            prediction = torch.stack(prediction_list,dim=0)
 
         else:
             pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train)
