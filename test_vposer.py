@@ -11,8 +11,9 @@ vp , ps = load_model('/home/paulj/projects/TADA/V02_05', model_code=VPoser, remo
 vp = vp.cuda()
 
 motion_file = pickle.load(open('/home/paulj/projects/TADA/4d/poses/diving.pkl', 'rb'))
-motion = torch.from_numpy(motion_file['body_pose'][0]).float().cuda().unsqueeze(0)
+motion = torch.from_numpy(motion_file['body_pose']).float().cuda().unsqueeze(0)
 print(motion.shape)
+breakpoint()
 # body_z = vp.encode(motion).mean
 body_z = torch.randn(1, 32).cuda()
 decode_pose = vp.decode(body_z)["pose_body"].contiguous().view(-1, 63)

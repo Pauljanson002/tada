@@ -26,16 +26,21 @@ from human_body_prior.models.vposer_model import VPoser
 
 import torchvision
 import pickle
-
+import math
 import logging
 logger = logging.getLogger(__name__)
 
 
 def sinusoidal_embedding(dim,frame_limit):
+    # pe = torch.FloatTensor(
+    #     [
+    #         [p / (10000 ** (2 * (i // 2) / dim)) for i in range(dim)]
+    #         for p in range(frame_limit)
+    #     ]
+    # )
     pe = torch.FloatTensor(
         [
-            [p / (10000 ** (2 * (i // 2) / dim)) for i in range(dim)]
-            for p in range(frame_limit)
+            [1 * 2**(i//2) * math.pi * p for i in range(dim)] for p in range(frame_limit)
         ]
     )
     pe[:, 0::2] = torch.sin(pe[:, 0::2])
@@ -75,7 +80,57 @@ class MLP(nn.Module):
                 x = F.relu(x, inplace=True)
         return x
 
-    
+class PoseField(nn.Module):
+    def __init__(self, input_dim, hidden_dims,output_dim,frames,pose_mlp_args,*args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.time_embeddings = nn.Parameter(sinusoidal_embedding(8, frames), requires_grad=False)
+        layers = []
+        for i in range(len(hidden_dims)):
+            if i == 0:
+                layers.append(nn.Linear(input_dim, hidden_dims[i]))
+            else:
+                layers.append(nn.Linear(hidden_dims[i-1], hidden_dims[i]))
+            layers.append(nn.ReLU())
+            if i % 2 == 1:
+                layers.append(nn.LayerNorm(hidden_dims[i]))
+        layers.append(nn.Linear(hidden_dims[-1], output_dim))
+        self.layers = nn.Sequential(*layers)
+        self.create_embedding_fn()
+        self.pose_mlp_args = pose_mlp_args
+        
+    def create_embedding_fn(self):
+        embed_fns = []
+        d = 1
+        out_dim = 0
+        if False:
+            embed_fns.append(lambda x : x)
+            out_dim += d
+
+        max_freq = 24
+        N_freqs = 4
+
+        freq_bands = 2.**torch.linspace(0., max_freq, steps=N_freqs)
+
+        for freq in freq_bands:
+            for p_fn in [torch.sin, torch.cos]:
+                embed_fns.append(lambda x, p_fn=p_fn, freq=freq : p_fn(x * freq))
+                out_dim += d
+
+        self.embed_fns = embed_fns
+        self.out_dim = out_dim
+
+    def embed(self, inputs):
+        embeds = torch.cat([fn(inputs) for fn in self.embed_fns], -1)
+        # logger.debug(embeds)
+        return embeds
+    def forward(self, tau):
+        x = self.embed(tau)
+        output = self.layers(x)
+        if self.pose_mlp_args.use_tau_scale:
+            output = output * tau**0.35
+        if self.pose_mlp_args.use_tanh_clamp:
+            output = torch.tanh(output / 0.5) * self.pose_mlp_args.tanh_scale
+        return output
 
 
 class DLMesh(nn.Module):
@@ -216,12 +271,14 @@ class DLMesh(nn.Module):
 
             if self.opt.video:
                 if self.vpose:
-                    self.pose_mlp = MLP(8,32,8,5)
+                    self.pose_mlp = PoseField(8, [32,32], 32,self.num_frames,self.opt.pose_mlp_args)
                 else:
-                    self.pose_mlp = MLP(8,126,8,5)
-                self.time_embeddings = sinusoidal_embedding(8,self.num_frames).to(self.device)
+                    self.pose_mlp = PoseField(
+                        8, [32, 126], 126, self.num_frames, self.opt.pose_mlp_args
+                    )
+
             else:
-                self.pose_mlp = MLP(32,32,8,5)
+                self.pose_mlp = PoseField(8, [32,32], 32)
             self.pose_mlp = self.pose_mlp.to(self.device)
 
         # background network
@@ -451,9 +508,9 @@ class DLMesh(nn.Module):
                     #     prediction = self.pose_mlp(self.body_pose_6d)
                     #     body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     if self.opt.model_change:
-                        prediction = self.pose_mlp(self.time_embeddings[frame_id]) + self.init_body_pose_6d_set[frame_id]
+                        prediction = self.pose_mlp(torch.tensor([frame_id],device=self.device)) + self.init_body_pose_6d_set[frame_id]
                     else:
-                        prediction = self.pose_mlp(self.time_embeddings[frame_id])
+                        prediction = self.pose_mlp(torch.tensor([frame_id],device=self.device))
                     if self.vpose:
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     else:
