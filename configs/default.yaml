@@ -47,6 +47,7 @@ training:
   constraint_latent_weight: 0.1
   guidance_scale: 100
   set_global_time_step: True
+  use_ground_truth: False
 data:
   h: 256
   w: 256
@@ -96,11 +97,13 @@ model:
   initialize_pose: "zero"
   add_fake_movement: True
   model_change: False
-  use_pose_mlp: True
+  # pose_mlp angle , pose , None
+  pose_mlp: "angle"
   pose_mlp_args:
     use_tau_scale: True
     use_tanh_clamp: True
     tanh_scale: 1.0
+    init_zero: False
   vpose: True
 smpl:
   model_path: 'data/smpl_related/models'

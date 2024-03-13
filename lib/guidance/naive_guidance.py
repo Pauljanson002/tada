@@ -14,6 +14,8 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 
 import torchvision
 
+
+logger = logging.get_logger(__name__)
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
     @custom_fwd
@@ -113,12 +115,11 @@ class Naive(nn.Module):
         # loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
         # Calculate l2 difference betwen the 
         
-        loss = F.mse_loss(pred_rgbt,self.reference_videos[view_id])
-        
+        loss =  F.mse_loss(pred_rgbt,self.reference_videos[view_id])
         # Save rgbt and reference video
         # torchvision.io.write_video(f"{view_id}.mp4",(255* pred_rgbt).permute(0,2,3,1).cpu().numpy(),fps=30)
         # torchvision.io.write_video(f"{view_id}.mp4",(255* self.reference_videos[view_id]).permute(0,2,3,1).cpu().numpy(),fps=30)
-
+        logger.debug(f"Loss: {loss}")
         return loss
 
     # def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,

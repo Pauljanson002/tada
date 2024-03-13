@@ -100,7 +100,7 @@ class NoGuidance(nn.Module):
 
         return text_embeddings
 
-    def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False): # pred_rgbt: [F, 3, H, W]
+    def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False,**kwargs): # pred_rgbt: [F, 3, H, W]
         
         
         # TODO: Do we need gradient clipping ? 

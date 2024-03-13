@@ -83,21 +83,27 @@ class MLP(nn.Module):
 class PoseField(nn.Module):
     def __init__(self, input_dim, hidden_dims,output_dim,frames,pose_mlp_args,*args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.time_embeddings = nn.Parameter(sinusoidal_embedding(8, frames), requires_grad=False)
         layers = []
         for i in range(len(hidden_dims)):
             if i == 0:
                 layers.append(nn.Linear(input_dim, hidden_dims[i]))
             else:
                 layers.append(nn.Linear(hidden_dims[i-1], hidden_dims[i]))
-            layers.append(nn.ReLU())
             if i % 2 == 1:
                 layers.append(nn.LayerNorm(hidden_dims[i]))
+            layers.append(nn.ReLU())
+
         layers.append(nn.Linear(hidden_dims[-1], output_dim))
+
+        # initialize output layer to output zeros
+        if pose_mlp_args.init_zero:
+            layers[-1].weight.data.zero_()
+            layers[-1].bias.data.zero_()
+
         self.layers = nn.Sequential(*layers)
         self.create_embedding_fn()
         self.pose_mlp_args = pose_mlp_args
-        
+
     def create_embedding_fn(self):
         embed_fns = []
         d = 1
@@ -105,8 +111,7 @@ class PoseField(nn.Module):
         if False:
             embed_fns.append(lambda x : x)
             out_dim += d
-
-        max_freq = 24
+        max_freq = 5
         N_freqs = 4
 
         freq_bands = 2.**torch.linspace(0., max_freq, steps=N_freqs)
@@ -129,8 +134,75 @@ class PoseField(nn.Module):
         if self.pose_mlp_args.use_tau_scale:
             output = output * tau**0.35
         if self.pose_mlp_args.use_tanh_clamp:
-            output = torch.tanh(output / 0.5) * self.pose_mlp_args.tanh_scale
+            output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
         return output
+
+
+class AngleField(nn.Module):
+    def __init__(
+        self, input_dim, hidden_dims, output_dim, pose_mlp_args, *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+
+        layers = []
+        for i in range(len(hidden_dims)):
+            if i == 0:
+                layers.append(nn.Linear(input_dim, hidden_dims[i]))
+            else:
+                layers.append(nn.Linear(hidden_dims[i - 1], hidden_dims[i]))
+            if i % 2 == 1:
+                layers.append(nn.LayerNorm(hidden_dims[i]))
+            layers.append(nn.ReLU())
+
+        layers.append(nn.Linear(hidden_dims[-1], output_dim))
+
+        if pose_mlp_args.init_zero:
+            layers[-1].weight.data.zero_()
+            layers[-1].bias.data.zero_()
+
+        self.layers = nn.Sequential(*layers)
+        self.create_embedding_fn()
+        self.pose_mlp_args = pose_mlp_args
+
+    def create_embedding_fn(self):
+        embed_fns = []
+        d = 1
+        out_dim = 0
+        if False:
+            embed_fns.append(lambda x: x)
+            out_dim += d
+        max_freq = 5
+        N_freqs = 4
+
+        freq_bands = 2.0 ** torch.linspace(0.0, max_freq, steps=N_freqs)
+
+        for freq in freq_bands:
+            for p_fn in [torch.sin, torch.cos]:
+                embed_fns.append(lambda x, p_fn=p_fn, freq=freq: p_fn(x * freq))
+                out_dim += d
+
+        self.embed_fns = embed_fns
+        self.out_dim = out_dim
+
+    def embed(self, inputs):
+        embeds = torch.cat([fn(inputs) for fn in self.embed_fns], -1)
+        return embeds
+
+    def forward(self, joint_id, tau):
+        # Embed the inputs
+        joint_tau = torch.cat([joint_id, tau], dim=-1)
+        inputs = self.embed(joint_tau)
+        x = self.layers(inputs)
+
+        # Scale the output by tau^(0.35) if specified in pose_mlp_args
+        if self.pose_mlp_args.use_tau_scale:
+            x = x * (tau**0.35)
+
+        # Apply tanh activation and scale if specified in pose_mlp_args
+        if self.pose_mlp_args.use_tanh_clamp:
+            x = torch.tanh(x) * self.pose_mlp_args.tanh_scale
+
+        return x
 
 
 class DLMesh(nn.Module):
@@ -271,14 +343,35 @@ class DLMesh(nn.Module):
 
             if self.opt.video:
                 if self.vpose:
-                    self.pose_mlp = PoseField(8, [32,32], 32,self.num_frames,self.opt.pose_mlp_args)
+                    if self.opt.pose_mlp == "pose":
+                        self.pose_mlp = PoseField(8, [32,32], 32,self.num_frames,self.opt.pose_mlp_args)
+                    elif self.opt.pose_mlp == "angle":
+                        raise NotImplementedError("AngleField is not implemented yet for vpose")
                 else:
-                    self.pose_mlp = PoseField(
-                        8, [32, 126], 126, self.num_frames, self.opt.pose_mlp_args
-                    )
+                    if self.opt.pose_mlp == "pose":
+                        self.pose_mlp = PoseField(
+                            8, [32, 32], 126, self.num_frames, self.opt.pose_mlp_args
+                        )
+                    else:
+                        self.pose_mlp = AngleField(
+                            16, [32, 32], 6, self.opt.pose_mlp_args
+                        )
 
             else:
-                self.pose_mlp = PoseField(8, [32,32], 32)
+                if self.vpose:
+                    if self.opt.pose_mlp == "pose":
+                        self.pose_mlp = PoseField(8, [32,32], 32)
+                    elif self.opt.pose_mlp == "angle":
+                        raise NotImplementedError("AngleField is not implemented yet for vpose")
+                else:
+                    if self.opt.pose_mlp == "pose":
+                        self.pose_mlp = PoseField(
+                            8, [32, 32], 126,self.num_frames,self.opt.pose_mlp_args
+                        )
+                    else:
+                        self.pose_mlp = AngleField(
+                            16, [126,126], 6, self.opt.pose_mlp_args
+                        )
             self.pose_mlp = self.pose_mlp.to(self.device)
 
         # background network
@@ -310,7 +403,7 @@ class DLMesh(nn.Module):
                 self.encoder_geo, in_dim_geo = get_encoder('hashgrid', interpolation='smoothstep')
                 self.geo_net = MLP(in_dim_geo, 1, 32, 2)
             else:
-                if self.opt.use_pose_mlp:
+                if self.opt.pose_mlp is not None:
                     self.v_offsets =torch.zeros(N, 1,requires_grad=False).to(self.device)
                 else:
                     self.v_offsets = nn.Parameter(torch.zeros(N, 3))
@@ -326,7 +419,7 @@ class DLMesh(nn.Module):
                 self.expression = nn.Parameter(self.expression)
             # self.jaw_pose = nn.Parameter(self.jaw_pose)
         if not self.opt.lock_pose:
-            if not self.opt.use_pose_mlp:
+            if self.opt.pose_mlp is None:
                 if self.opt.use_6d:
                     if self.opt.use_full_pose:
                         self.full_pose_6d = nn.Parameter(self.full_pose_6d)
@@ -454,7 +547,7 @@ class DLMesh(nn.Module):
 
         if not self.opt.lock_pose:
 
-            if self.opt.use_pose_mlp:
+            if self.opt.pose_mlp is not None:
                 params.append({'params': self.pose_mlp.parameters(), 'lr': lr})
             elif self.opt.use_6d:
                 if self.opt.use_full_pose:
@@ -488,8 +581,9 @@ class DLMesh(nn.Module):
         left_hand_pose = None
         right_hand_pose = None
         if not self.opt.lock_geo:
-            if self.opt.use_pose_mlp: 
-                if not video:
+            if self.opt.pose_mlp is not None: 
+                if not video: # image case
+                    # TODO: Implement the pose mlp for non vpose case for image
                     if self.opt.model_change:
                         prediction = self.pose_mlp(self.body_pose_6d)
                         body_pose = self.body_prior.decode((prediction + self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
@@ -497,24 +591,23 @@ class DLMesh(nn.Module):
                         prediction = self.pose_mlp(self.body_pose_6d)
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                 else:
-                    # if frame_id == 0:
-                    #     logger.debug("Updating the intermediate state")
-                    #     input_to_mlp = self.body_pose_6d_set + self.positional_embedding
-                    #     self.intermediate = self.pose_mlp(input_to_mlp)
-                    # if self.opt.model_change:
-                    #     prediction = self.pose_mlp(self.body_pose_6d)
-                    #     body_pose = self.body_prior.decode((prediction + self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
-                    # else:
-                    #     prediction = self.pose_mlp(self.body_pose_6d)
-                    #     body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                    # Video case , with pose mlp
+                    if self.opt.pose_mlp == "pose":
+                        pose_mlp_output = self.pose_mlp(torch.tensor([frame_id],device=self.device))
+                    elif self.opt.pose_mlp == "angle":
+                        angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
+                        frame_batch = torch.tensor([frame_id],device=self.device).repeat(21,1)
+                        pose_mlp_output = self.pose_mlp(angle_batch,frame_batch)
+                        pose_mlp_output = pose_mlp_output.view(1,-1)
                     if self.opt.model_change:
-                        prediction = self.pose_mlp(torch.tensor([frame_id],device=self.device)) + self.init_body_pose_6d_set[frame_id]
+                        prediction = pose_mlp_output + self.init_body_pose_6d_set[frame_id]
                     else:
-                        prediction = self.pose_mlp(torch.tensor([frame_id],device=self.device))
+                        prediction = pose_mlp_output
                     if self.vpose:
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     else:
                         body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(prediction.view(-1,21,6))).view(1,-1)
+            # Non pose mlp case
             elif self.opt.use_6d:
                 if self.opt.model_change:
                     if self.opt.use_full_pose:
@@ -553,6 +646,7 @@ class DLMesh(nn.Module):
                     right_eye_pose = None
                     left_hand_pose = None
                     right_hand_pose = None
+                prediction = body_pose
             else:
                 body_pose = self.body_pose
                 global_orient = self.global_orient

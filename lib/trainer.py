@@ -18,6 +18,7 @@ from rich.console import Console
 from torch_ema import ExponentialMovingAverage
 import wandb
 from lib.guidance.no_guidance import NoGuidance
+from lib.guidance.naive_guidance import Naive
 from lib.common.utils import *
 from lib.dpt import DepthNormalEstimation
 from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,axis_angle_to_matrix,matrix_to_rotation_6d
@@ -87,11 +88,11 @@ class Trainer(object):
         self.guidance = guidance
         # self.guidance = torch.nn.DataParallel(self.guidance, device_ids=[0, 1, 2, 3]).module
         # text prompt
-        if isinstance(self.guidance, NoGuidance):
-            self.running_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
-            self.running_body_pose = torch.as_tensor(self.running_body_pose).to("cuda").float()
-            self.running_body_pose = self.running_body_pose[:5,:]
-            self.running_body_pose = matrix_to_rotation_6d(axis_angle_to_matrix(self.running_body_pose.view(-1,3))).view(5, -1)
+
+        self.running_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))["body_pose"]
+        self.running_body_pose = torch.as_tensor(self.running_body_pose).to("cuda").float()
+        self.running_body_pose = self.running_body_pose[:self.model.opt.num_frames,:]
+        self.running_body_pose = matrix_to_rotation_6d(axis_angle_to_matrix(self.running_body_pose.view(-1,3))).view(self.model.opt.num_frames, -1)
             
         self.text_embeds = None
         if self.guidance is not None:
@@ -303,7 +304,7 @@ class Trainer(object):
                 loss = 0
             
             if self.opt.constraint_latent_weight > 0 and self.model.vpose:
-                if self.model.opt.use_pose_mlp:
+                if self.model.opt.pose_mlp is not None:
                     constraint_loss = self.opt.constraint_latent_weight * torch.norm(out["prediction"]).mean()
                     loss+= constraint_loss
                     loss_dict["constraint_latent"] = constraint_loss.item()
@@ -312,15 +313,21 @@ class Trainer(object):
                     loss+= constraint_loss
                     loss_dict["constraint_latent"] = constraint_loss.item()
             
-            if isinstance(self.guidance, NoGuidance):
+            if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose
-                loss += 1000 * F.mse_loss(self.model.init_body_pose_6d_set+self.model.body_pose_6d_set, self.running_body_pose)
+                loss += F.mse_loss(out["prediction"], self.running_body_pose)
+                self.logger.debug(f"Ground truth loss: {loss.item()}")
+            else:
+                # L2 loss between the body pose 6d and the running pose
+                dummy_loss = F.mse_loss(out["prediction"], self.running_body_pose)
+                self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
+                del dummy_loss
             # if self.model.vpose:
             #     # Constraint the size of the body pose 6d to norm 1
             #     loss += torch.norm(self.model.body_pose_6d_set, dim=1).mean()
                 
             if self.opt.regularize_coeff > 0:
-                if self.model.opt.use_pose_mlp:
+                if self.model.opt.pose_mlp is not None:
                     difference = out["prediction"][1:] - out["prediction"][:-1]
                 else:
                     difference = self.model.body_pose_6d_set[1:] - self.model.body_pose_6d_set[:-1]
@@ -589,13 +596,13 @@ class Trainer(object):
 
         if self.local_rank == 0:
             pbar = tqdm.tqdm(total=len(loader) * loader.batch_size,
-                             bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+                            bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         video = self.model.opt.video
         self.local_step = 0
         temp_grads = {n_p:0 for n_p , p in self.model.named_parameters() if p.requires_grad}
         if self.opt.set_global_time_step:
             self.guidance.global_time_step = torch.randint(self.guidance.min_step, self.guidance.max_step + 1, (1,), dtype=torch.long, device=self.device)
-        
+        loss_list = []
         for view_id,data in enumerate(loader):
 
             # if view_id in [0,2]:
@@ -658,6 +665,8 @@ class Trainer(object):
                 else:
                     pbar.set_description("loss={:.4f} , Reg loss{:.4f})".format(loss_val, loss_dict.get("reg_loss", 0)))
                 pbar.update(loader.batch_size)
+            loss_list.append(loss_val)
+        self.logger.debug(f"==> Average Loss : {np.mean(loss_list)}")
 
             # if self.opt.debug:
             #     break
