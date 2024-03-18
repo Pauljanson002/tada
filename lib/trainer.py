@@ -317,10 +317,18 @@ class Trainer(object):
                 # L2 loss between the body pose 6d and the running pose
                 loss += F.mse_loss(out["prediction"], self.running_body_pose)
                 self.logger.debug(f"Ground truth loss: {loss.item()}")
+                wandb.log({
+                    "loss/ground_truth_loss": loss.item(),
+                    "epoch": self.epoch,
+                })
             else:
                 # L2 loss between the body pose 6d and the running pose
                 dummy_loss = F.mse_loss(out["prediction"], self.running_body_pose)
                 self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
+                wandb.log({
+                    "loss/dummy_truth_loss": dummy_loss.item(),
+                    "epoch": self.epoch,
+                })
                 del dummy_loss
             # if self.model.vpose:
             #     # Constraint the size of the body pose 6d to norm 1
