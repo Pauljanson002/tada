@@ -149,7 +149,7 @@ class Trainer(object):
             os.makedirs(self.workspace, exist_ok=True)
             self.log_path = os.path.join(self.workspace, f"log_{self.name}.txt")
             self.log_ptr = open(self.log_path, "a+")
-            if False:
+            if True:
                 self.ckpt_path = os.path.join(self.workspace, 'checkpoints')
                 self.best_path = f"{self.ckpt_path}/{self.name}.pth"
                 os.makedirs(self.ckpt_path, exist_ok=True)
@@ -175,7 +175,7 @@ class Trainer(object):
                     self.load_checkpoint()
             else:  # path to ckpt
                 self.logger.info(f" Loading {self.use_checkpoint} ...")
-                self.load_checkpoint(self.use_checkpoint)
+                self.load_checkpoint(self.use_checkpoint,model_only=True)
                 
         self.train_video_frames = []
         self.write_train_video = True
@@ -316,11 +316,20 @@ class Trainer(object):
             if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose
                 loss += F.mse_loss(out["prediction"], self.running_body_pose)
+                wandb.log({
+                    "loss/ground_truth_loss": loss.item(),
+                    "epoch": self.epoch,
+                })
+                #loss += F.mse_loss(out["prediction"], torch.zeros_like(out["prediction"]))
                 self.logger.debug(f"Ground truth loss: {loss.item()}")
             else:
                 # L2 loss between the body pose 6d and the running pose
                 dummy_loss = F.mse_loss(out["prediction"], self.running_body_pose)
                 self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
+                wandb.log({
+                    "loss/dummy_loss": dummy_loss.item(),
+                    "epoch": self.epoch,
+                })
                 del dummy_loss
             # if self.model.vpose:
             #     # Constraint the size of the body pose 6d to norm 1
@@ -477,7 +486,7 @@ class Trainer(object):
 
             if (self.epoch % self.eval_interval == 0):
                 self.evaluate_one_epoch(valid_loader)
-                #self.save_checkpoint(full=False, best=True)
+                self.save_checkpoint(full=False, best=False)
                 if self.write_train_video:
                     if self.model.opt.video:
                         all_preds = np.stack(self.train_video_frames, axis=0)
@@ -824,7 +833,6 @@ class Trainer(object):
         self.logger.info(f"++> Evaluate epoch {self.epoch} Finished.")
 
     def save_checkpoint(self, name=None, full=False, best=False):
-
         if name is None:
             name = f'{self.name}_ep{self.epoch:04d}'
 
