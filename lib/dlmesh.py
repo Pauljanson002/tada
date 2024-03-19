@@ -131,10 +131,10 @@ class PoseField(nn.Module):
     def forward(self, tau):
         x = self.embed(tau)
         output = self.layers(x)
-        if self.pose_mlp_args.use_tau_scale:
-            output = output * tau**0.35
         if self.pose_mlp_args.use_tanh_clamp:
             output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
+        if self.pose_mlp_args.use_tau_scale:
+            output = output * tau**0.35
         return output
 
 
@@ -174,7 +174,11 @@ class AngleField(nn.Module):
         max_freq = 5
         N_freqs = 4
 
-        freq_bands = 2.0 ** torch.linspace(0.0, max_freq, steps=N_freqs)
+        embed_type = "nerf"
+        if embed_type == "transformer":
+            freq_bands = torch.tensor([1 / (10000 ** (2 * i  / 4)) for i in range(4)])
+        else:
+            freq_bands = 2.0 ** torch.linspace(0.0, max_freq, steps=N_freqs)
 
         for freq in freq_bands:
             for p_fn in [torch.sin, torch.cos]:
@@ -190,17 +194,23 @@ class AngleField(nn.Module):
 
     def forward(self, joint_id, tau):
         # Embed the inputs
+
+        # joint_embed = self.embed(joint_id)
+        # tau_embed = self.embed(tau)
+        # both_embed = torch.cat([joint_embed, tau_embed[:,:4]], dim=-1)
+        # inputs = both_embed
         joint_tau = torch.cat([joint_id, tau], dim=-1)
         inputs = self.embed(joint_tau)
         x = self.layers(inputs)
 
         # Scale the output by tau^(0.35) if specified in pose_mlp_args
-        if self.pose_mlp_args.use_tau_scale:
-            x = x * (tau**0.35)
 
         # Apply tanh activation and scale if specified in pose_mlp_args
         if self.pose_mlp_args.use_tanh_clamp:
             x = torch.tanh(x) * self.pose_mlp_args.tanh_scale
+
+        if self.pose_mlp_args.use_tau_scale:
+            x = x * (tau**1.0)
 
         return x
 
@@ -354,7 +364,7 @@ class DLMesh(nn.Module):
                         )
                     else:
                         self.pose_mlp = AngleField(
-                            16, [32, 32], 6, self.opt.pose_mlp_args
+                            32, [64, 64,64,64], 6, self.opt.pose_mlp_args
                         )
 
             else:
@@ -370,7 +380,7 @@ class DLMesh(nn.Module):
                         )
                     else:
                         self.pose_mlp = AngleField(
-                            16, [126,126], 6, self.opt.pose_mlp_args
+                            16, [64, 64, 64, 64], 6, self.opt.pose_mlp_args
                         )
             self.pose_mlp = self.pose_mlp.to(self.device)
 
@@ -438,6 +448,7 @@ class DLMesh(nn.Module):
                                             output_facial_transformation_matrixes=True,
                                             num_faces=1)
         self.detector = vision.FaceLandmarker.create_from_options(options)
+        self.joint_locations = torch.load("a.pt").to(self.device).squeeze(0)
 
     @torch.no_grad()
     def get_init_body(self, cache_path='./data/init_body/data.npz'):
@@ -596,8 +607,9 @@ class DLMesh(nn.Module):
                         pose_mlp_output = self.pose_mlp(torch.tensor([frame_id],device=self.device))
                     elif self.opt.pose_mlp == "angle":
                         angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
+                        joint_batch = self.joint_locations
                         frame_batch = torch.tensor([frame_id],device=self.device).repeat(21,1)
-                        pose_mlp_output = self.pose_mlp(angle_batch,frame_batch)
+                        pose_mlp_output = self.pose_mlp(joint_batch,frame_batch)
                         pose_mlp_output = pose_mlp_output.view(1,-1)
                     if self.opt.model_change:
                         prediction = pose_mlp_output + self.init_body_pose_6d_set[frame_id]
@@ -917,4 +929,4 @@ class DLMesh(nn.Module):
                 "normal": normal,
                 "smplx_landmarks": smplx_landmarks,
                 "prediction": prediction
-            }
+            }#
