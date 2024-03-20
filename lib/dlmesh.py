@@ -133,8 +133,8 @@ class PoseField(nn.Module):
         output = self.layers(x)
         if self.pose_mlp_args.use_tanh_clamp:
             output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
-        if self.pose_mlp_args.use_tau_scale:
-            output = output * tau**0.35
+        if self.pose_mlp_args.tau_scale > 0:
+            output = output * tau**self.pose_mlp_args.tau_scale
         return output
 
 
@@ -201,18 +201,21 @@ class AngleField(nn.Module):
         # inputs = both_embed
         joint_tau = torch.cat([joint_id, tau], dim=-1)
         inputs = self.embed(joint_tau)
-        x = self.layers(inputs)
+        output = self.layers(inputs)
 
         # Scale the output by tau^(0.35) if specified in pose_mlp_args
 
         # Apply tanh activation and scale if specified in pose_mlp_args
         if self.pose_mlp_args.use_tanh_clamp:
-            x = torch.tanh(x) * self.pose_mlp_args.tanh_scale
+            output = (
+                torch.tanh(output / self.pose_mlp_args.tanh_scale)
+                * self.pose_mlp_args.tanh_scale
+            )
 
-        if self.pose_mlp_args.use_tau_scale:
-            x = x * (tau**1.0)
+        if self.pose_mlp_args.tau_scale > 0:
+            output = output * tau**self.pose_mlp_args.tau_scale
 
-        return x
+        return output
 
 
 class DLMesh(nn.Module):
@@ -359,9 +362,12 @@ class DLMesh(nn.Module):
                         raise NotImplementedError("AngleField is not implemented yet for vpose")
                 else:
                     if self.opt.pose_mlp == "pose":
-                        self.pose_mlp = PoseField(
-                            8, [32, 32], 126, self.num_frames, self.opt.pose_mlp_args
-                        )
+                        if self.vpose:
+                            self.pose_mlp = PoseField(8, [32,32], 32,self.num_frames,self.opt.pose_mlp_args)
+                        else:
+                            self.pose_mlp = PoseField(
+                                8, [32, 32], 126, self.num_frames, self.opt.pose_mlp_args
+                            )
                     else:
                         self.pose_mlp = AngleField(
                             32, [64, 64,64,64], 6, self.opt.pose_mlp_args

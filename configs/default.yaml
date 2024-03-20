@@ -100,7 +100,7 @@ model:
   # pose_mlp angle , pose , None
   pose_mlp: "angle"
   pose_mlp_args:
-    use_tau_scale: True
+    tau_scale: 0.35
     use_tanh_clamp: True
     tanh_scale: 1.0
     init_zero: False

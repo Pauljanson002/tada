@@ -93,7 +93,7 @@ class Trainer(object):
         self.running_body_pose = torch.as_tensor(self.running_body_pose).to("cuda").float()
         self.running_body_pose = self.running_body_pose[:self.model.opt.num_frames,:]
         self.running_body_pose = matrix_to_rotation_6d(axis_angle_to_matrix(self.running_body_pose.view(-1,3))).view(self.model.opt.num_frames, -1)
-            
+
         self.text_embeds = None
         if self.guidance is not None:
             for p in self.guidance.parameters():
@@ -176,12 +176,12 @@ class Trainer(object):
             else:  # path to ckpt
                 self.logger.info(f" Loading {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint,model_only=True)
-                
+
         self.train_video_frames = []
         self.write_train_video = True
 
     # calculate the text embeddings.
-    #Show : Text embeddings
+    # Show : Text embeddings
     def prepare_text_embeddings(self):
         if self.text is None:
             self.logger.warning(f" text prompt is not provided.")
@@ -266,7 +266,7 @@ class Trainer(object):
             image = out['image'].permute(0, 3, 1, 2)
             normal = out['normal'].permute(0, 3, 1, 2)
             alpha = out['alpha'].permute(0, 3, 1, 2)
-            
+
         # Show losses
         if not video:
             out_annel = self.model(rays_o, rays_d, mvp, H, W, shading='albedo')
@@ -278,9 +278,9 @@ class Trainer(object):
             pred = (pred[0].detach().cpu().numpy() * 255).astype(np.uint8)
 
             p_iter = self.global_step / self.opt.iters
-            
+
         else:
-            
+
             video_frames = out["video"].squeeze(1)
             normal_frames = out["normal_vid"].squeeze(1)
             alpha_frames = out["alpha_vid"].squeeze(1)
@@ -289,7 +289,6 @@ class Trainer(object):
             normal_frames = normal_frames.permute(0, 3, 1, 2)
             alpha_frames = alpha_frames.permute(0, 3, 1, 2)
             pred = video_frames_np
-            
 
             if self.opt.rgb_sds:
                 loss = self.guidance.train_step(dir_text_z, video_frames,view_id=kwargs.get("view_id",0),guidance_scale=self.opt.guidance_scale).mean()
@@ -302,7 +301,7 @@ class Trainer(object):
                 loss_dict["mean_sds"] = loss.item()
             else:
                 loss = 0
-            
+
             if self.opt.constraint_latent_weight > 0 and self.model.vpose:
                 if self.model.opt.pose_mlp is not None:
                     constraint_loss = self.opt.constraint_latent_weight * torch.norm(out["prediction"]).mean()
@@ -312,7 +311,7 @@ class Trainer(object):
                     constraint_loss =  self.opt.constraint_latent_weight * torch.norm(self.model.body_pose_6d_set, dim=1).mean()
                     loss+= constraint_loss
                     loss_dict["constraint_latent"] = constraint_loss.item()
-            
+
             if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose
                 loss += F.mse_loss(out["prediction"], self.running_body_pose)
@@ -320,7 +319,7 @@ class Trainer(object):
                     "loss/ground_truth_loss": loss.item(),
                     "epoch": self.epoch,
                 })
-                #loss += F.mse_loss(out["prediction"], torch.zeros_like(out["prediction"]))
+                # loss += F.mse_loss(out["prediction"], torch.zeros_like(out["prediction"]))
                 self.logger.debug(f"Ground truth loss: {loss.item()}")
                 wandb.log({
                     "loss/ground_truth_loss": loss.item(),
@@ -328,7 +327,19 @@ class Trainer(object):
                 })
             else:
                 # L2 loss between the body pose 6d and the running pose
-                dummy_loss = F.mse_loss(out["prediction"], self.running_body_pose)
+                if self.model.vpose:
+                    dummy_loss = F.mse_loss(
+                        matrix_to_rotation_6d(axis_angle_to_matrix(
+                            self.model.body_prior.decode(
+                                out["prediction"].unsqueeze(0)
+                            )["pose_body"]
+                            .contiguous()
+                            .view(-1, 3)
+                        )).view(self.model.num_frames,-1),
+                        self.running_body_pose,
+                    )
+                else:
+                    dummy_loss = F.mse_loss(out["prediction"], self.running_body_pose)
                 self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
                 wandb.log({
                     "loss/dummy_truth_loss": dummy_loss.item(),
@@ -338,7 +349,7 @@ class Trainer(object):
             # if self.model.vpose:
             #     # Constraint the size of the body pose 6d to norm 1
             #     loss += torch.norm(self.model.body_pose_6d_set, dim=1).mean()
-                
+
             if self.opt.regularize_coeff > 0:
                 if self.model.opt.pose_mlp is not None:
                     difference = out["prediction"][1:] - out["prediction"][:-1]
@@ -349,13 +360,13 @@ class Trainer(object):
                 loss_dict["reg_loss"] = regularization_term.item()
             else:
                 loss_dict["reg_loss"] = 0
-            
+
             # TODO: Implement normal sds
             # if self.opt.normal_sds:
             #     loss += self.guidance.train_step(dir_text_z, normal_frames).mean()
             # if self.opt.mean_sds:
             #     loss += self.guidance.train_step(dir_text_z, torch.cat([normal_frames, video_frames.detach()])).mean() #TODO: Why detach video frames?
-            
+
         if do_rgbd_loss:  # with image input
             # gt_mask = data['mask']  # [B, H, W]
             gt_rgb = data['rgb']  # [B, 3, H, W]
@@ -379,12 +390,12 @@ class Trainer(object):
                     loss = self.guidance.train_step(dir_text_z, image_annel).mean()
                 else:
                     loss = 0
-                
+
                 if self.opt.constraint_latent_weight > 0 and self.model.vpose:
                     constraint_loss =  self.opt.constraint_latent_weight * torch.norm(self.model.body_pose_6d, dim=1).mean()
                     loss+= constraint_loss
                     loss_dict["constraint_latent"] = constraint_loss.item()    
-                
+
                 if not self.dpt:
                     # normal sds
                     if self.opt.normal_sds:
@@ -408,7 +419,6 @@ class Trainer(object):
                         # cv2.imwrite("im.png", pred)
                         # exit()
 
-
         return pred, loss , loss_dict
 
     def eval_step(self, data):
@@ -424,7 +434,7 @@ class Trainer(object):
         else:
             pred = out["video"].squeeze(1)
 
-        # dummy 
+        # dummy
         loss = torch.zeros([1], device=self.device, dtype=torch.float32)
 
         return pred, loss
@@ -459,10 +469,10 @@ class Trainer(object):
         self.logger.info(f"==> Finished saving mesh.")
 
     def train(self, train_loader, valid_loader, max_epochs):
-        
+
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
-            
+
         save_path = os.path.join(self.workspace, 'results')
         os.makedirs(save_path, exist_ok=True)
 
@@ -500,7 +510,6 @@ class Trainer(object):
                                     macro_block_size=1)
             if self.opt.debug:
                 break
-                
 
         end_t = time.time()
 
@@ -520,7 +529,6 @@ class Trainer(object):
             # except:
             #     pass
 
-        
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer.close()
 
@@ -628,7 +636,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             pred_rgbs, loss , loss_dict = self.train_step(data, loader.dataset.full_body,view_id=view_id)
-                
+
             if self.global_step % 50 == 0:
                 if not video:
                     pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
@@ -639,7 +647,7 @@ class Trainer(object):
                     save_path = os.path.join(self.workspace, 'train-vis', f'{self.name}/{self.global_step:04d}.mp4')
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     imageio.mimwrite(save_path, pred_rgbs , fps=3, quality=5, macro_block_size=1)
-                    
+
             # Add the first frame for reference
             if self.global_step == 1 and self.model.opt.video:
                 pred_np = (pred_rgbs).astype(np.uint8)
@@ -671,21 +679,20 @@ class Trainer(object):
                 if self.use_tensorboardX:
                     self.writer.add_scalar("train/loss", loss_val, self.global_step)
                     self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]['lr'], self.global_step)
-
                 if self.scheduler_update_every_step:
                     pbar.set_description(
                         "loss={:.4f} , Reg loss{:.4f}, lr={:.6f}, ".format(loss_val, loss_dict.get("reg_loss", 0), self.optimizer.param_groups[0]['lr']))
                 else:
-                    pbar.set_description("loss={:.4f} , Reg loss{:.4f})".format(loss_val, loss_dict.get("reg_loss", 0)))
+                    pbar.set_description("loss={:.4f} , Reg loss{:.4f}), lr={:.6f}".format(loss_val, loss_dict.get("reg_loss", 0), self.optimizer.param_groups[0]['lr']))
                 pbar.update(loader.batch_size)
             loss_list.append(loss_val)
         self.logger.debug(f"==> Average Loss : {np.mean(loss_list)}")
 
-            # if self.opt.debug:
-            #     break
-        
-        #! Added by PJ , Its a workaround 
-        #TODO : Find a permanent solution
+        # if self.opt.debug:
+        #     break
+
+        #! Added by PJ , Its a workaround
+        # TODO : Find a permanent solution
         # Normalize the gradient by the number of steps
         if self.opt.accumulate:
             for n_p,p in self.model.named_parameters():
@@ -693,11 +700,10 @@ class Trainer(object):
                     p.grad = temp_grads[n_p] / self.local_step
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            #self.optimizer.step()
+            # self.optimizer.step()
 
             if self.scheduler_update_every_step:
                 self.lr_scheduler.step()
-
 
         if self.ema is not None:
             self.ema.update()
@@ -705,13 +711,16 @@ class Trainer(object):
         average_loss = (total_reg_loss+total_sds_loss) / self.local_step
         self.stats["loss"].append(average_loss)
 
-        wandb.log({
-            "epoch": self.epoch,
-            "train_one_epoch/loss": average_loss,
-            "train_one_epoch/rgb_sds": total_sds_loss / self.local_step,
-            "train_one_epoch/reg_loss": total_reg_loss / self.local_step,
-        })
-        
+        wandb.log(
+            {
+                "epoch": self.epoch,
+                "train_one_epoch/loss": average_loss,
+                "train_one_epoch/rgb_sds": total_sds_loss / self.local_step,
+                "train_one_epoch/reg_loss": total_reg_loss / self.local_step,
+                "learning_rate/lr": self.optimizer.param_groups[0]["lr"],
+            }
+        )
+
         if self.local_rank == 0:
             pbar.close()
             if self.report_metric_at_train:
@@ -800,7 +809,7 @@ class Trainer(object):
                         t_pred = pred_np.transpose(1,0,2,3)
                         t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
                         self.train_video_frames.append(t_pred)
-                        
+
         if not self.model.opt.video and self.epoch % 10 ==0:
             save_path = os.path.join(self.workspace, 'validation', f'{name}.png')
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -811,7 +820,6 @@ class Trainer(object):
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 pred = (pred * 255).astype(np.uint8)
                 imageio.mimwrite(save_path, pred, fps=1, quality=5, macro_block_size=1)
-            
 
         average_loss = total_loss / self.local_step
         self.stats["valid_loss"].append(average_loss)
@@ -875,7 +883,7 @@ class Trainer(object):
                     # self.logger.info(f" New best result: {self.stats['best_result']} --> {self.stats['results'][-1]}")
                     # self.stats["best_result"] = self.stats["results"][-1]
 
-                    # save ema results 
+                    # save ema results
                     if self.ema is not None:
                         self.ema.store()
                         self.ema.copy_to()

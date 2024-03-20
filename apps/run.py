@@ -7,6 +7,7 @@ from lib.provider import ViewDataset
 from lib.trainer import *
 from lib.dlmesh import DLMesh
 from lib.common.utils import load_config
+from lib.schedulers import CosineAnnealingWarmupRestarts
 import hydra
 from omegaconf import OmegaConf
 torch.autograd.set_detect_anomaly(False)
@@ -75,13 +76,16 @@ def main(cfg):
         opt = cfg.training
         if opt.optim == 'adan':
             from lib.common.optimizer import Adan
-
             optimizer = lambda model: Adan(
-                model.get_params(opt.lr), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
+                model.get_params(opt.lr * 10 ), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
         else:  # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(opt.lr), betas=(0.9, 0.99), eps=1e-15)
 
-        if opt.scheduler == True:
+        if opt.scheduler == "cosine":
+            scheduler = lambda optimizer: CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=int(opt.iters * 0.25 * 0.2), cycle_mult=1.0, max_lr=opt.lr, min_lr=opt.lr / 10, warmup_steps=int(opt.iters * 0.25 * 0.05), gamma=1.0)
+        elif opt.scheduler == "cosine_single":
+            scheduler = lambda optimizer: CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=int(opt.iters), cycle_mult=1.0, max_lr=opt.lr, min_lr=opt.lr / 10, warmup_steps=int(opt.iters *0.25 * 0.1), gamma=1.0)
+        elif opt.scheduler == "lambda":
             scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 0.1 ** min(x / opt.iters, 1))
         else:
             scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda x: 1 ** min(x / opt.iters, 1))
@@ -131,7 +135,7 @@ def main(cfg):
                         optimizer=optimizer,
                         fp16=cfg.fp16,
                         lr_scheduler=scheduler,
-                        scheduler_update_every_step=True
+                        scheduler_update_every_step=False
                         )
         if os.path.exists(cfg.data.image):
             trainer.default_view_data = train_loader.dataset.get_default_view_data()
