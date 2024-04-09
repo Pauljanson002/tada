@@ -10,7 +10,7 @@ model:
   lock_geo: False
   lock_beta: True
   lock_pose: False
-  lock_tex: True
+  lock_tex: False
   skip_bg: True
   init_empty_tex: True
   albedo_res: 2048
@@ -18,7 +18,7 @@ model:
 training:
   anneal_tex_reso: False
   train_face_ratio: 0.0
-  iters: 1000
+  iters: 15000
   ckpt: "scratch"
   workspace: "./outputs"
   use_dpt: False

@@ -48,6 +48,8 @@ training:
   guidance_scale: 100
   set_global_time_step: True
   use_ground_truth: False
+  use_landmarks: False
+  use_3d_landmarks: True
 data:
   h: 256
   w: 256

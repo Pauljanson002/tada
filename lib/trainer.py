@@ -94,6 +94,13 @@ class Trainer(object):
         self.running_body_pose = self.running_body_pose[:self.model.opt.num_frames,:]
         self.running_body_pose = matrix_to_rotation_6d(axis_angle_to_matrix(self.running_body_pose.view(-1,3))).view(self.model.opt.num_frames, -1)
 
+        
+        self.landmarks = []
+        for i in range(4):
+            ldnmrk = torch.load(f"smplx_landmarks_{i+1}.pt").to("cuda")
+            self.landmarks.append(ldnmrk)
+        self.landmarks_3d = torch.load("smplx_3d_landmarks.pt").to("cuda")
+
         self.text_embeds = None
         if self.guidance is not None:
             for p in self.guidance.parameters():
@@ -190,7 +197,7 @@ class Trainer(object):
         if self.action is not None:
             self.text_embeds = {
                 'uncond': self.guidance.get_text_embeds([self.negative]),
-                'default': self.guidance.get_text_embeds([f"a shot of a {self.text} {self.action} in the {self.context}"]),
+                'default': self.guidance.get_text_embeds([f"a shot of a {self.text} {self.action} in the {self.context}, full-body"]),
             }
         else:
             self.text_embeds = {
@@ -201,12 +208,12 @@ class Trainer(object):
         if self.opt.train_face_ratio < 1:
             if self.action is not None:
                 self.text_embeds['body'] = {
-                    d: self.guidance.get_text_embeds([f"a shot of {d} view of a {self.text} {self.action} in the {self.context}"])
+                    d: self.guidance.get_text_embeds([f"a shot of {d} view of a {self.text} {self.action} in the {self.context}, full-body"])
                     for d in ['front', 'side', 'back', "overhead"]
                 }
             else:
                 self.text_embeds['body'] = {
-                    d: self.guidance.get_text_embeds([f"a shot of {d} view of a {self.text} in the {self.context}"])
+                    d: self.guidance.get_text_embeds([f"a shot of {d} view of a {self.text} in the {self.context}, full-body"])
                     for d in ['front', 'side', 'back', "overhead"]
                 }
         if self.opt.train_face_ratio > 0:
@@ -314,11 +321,7 @@ class Trainer(object):
 
             if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose
-                loss += F.mse_loss(out["prediction"], self.running_body_pose)
-                wandb.log({
-                    "loss/ground_truth_loss": loss.item(),
-                    "epoch": self.epoch,
-                })
+                loss += F.mse_loss(out["prediction"].view(-1,6), self.running_body_pose.view(-1,6))
                 # loss += F.mse_loss(out["prediction"], torch.zeros_like(out["prediction"]))
                 self.logger.debug(f"Ground truth loss: {loss.item()}")
                 wandb.log({
@@ -339,7 +342,7 @@ class Trainer(object):
                         self.running_body_pose,
                     )
                 else:
-                    dummy_loss = F.mse_loss(out["prediction"], self.running_body_pose)
+                    dummy_loss = F.mse_loss(out["prediction"].view(-1,6), self.running_body_pose.view(-1,6))
                 self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
                 wandb.log({
                     "loss/dummy_truth_loss": dummy_loss.item(),
@@ -349,6 +352,26 @@ class Trainer(object):
             # if self.model.vpose:
             #     # Constraint the size of the body pose 6d to norm 1
             #     loss += torch.norm(self.model.body_pose_6d_set, dim=1).mean()
+
+            if self.opt.use_landmarks:
+                # L2 loss between the landmarks and the predicted landmarks
+                landmark_2d_loss = 1* F.mse_loss(out["smplx_landmarks_vid"].view(-1,2), self.landmarks[self.local_step].view(-1,2))
+                self.logger.debug(f"Landmark loss {self.local_step}: {landmark_2d_loss.item()}")
+                loss+= landmark_2d_loss
+                wandb.log({
+                    "loss/landmark_loss": landmark_2d_loss.item(),
+                    "epoch": self.epoch,
+                })
+            
+            if self.opt.use_3d_landmarks:
+                # L2 loss between the landmarks and the predicted landmarks
+                landmark_3d_loss = 1* F.mse_loss(out["smplx_3d_landmarks_vid"].view(-1,3), self.landmarks_3d.view(-1,3))
+                loss+= landmark_3d_loss
+                self.logger.debug(f"3D Landmark loss: {landmark_3d_loss.item()}")
+                wandb.log({
+                    "loss/3d_landmark_loss": landmark_3d_loss.item(),
+                    "epoch": self.epoch,
+                })
 
             if self.opt.regularize_coeff > 0:
                 if self.model.opt.pose_mlp is not None:
@@ -769,7 +792,7 @@ class Trainer(object):
 
             for i,data in enumerate(loader):
                 self.local_step += 1
-                if i != self.epoch % 100:
+                if i != 25:
                     continue
 
                 # with torch.cuda.amp.autocast(enabled=self.fp16):

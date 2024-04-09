@@ -194,7 +194,7 @@ class AngleField(nn.Module):
 
     def forward(self, joint_id, tau):
         # Embed the inputs
-
+        
         # joint_embed = self.embed(joint_id)
         # tau_embed = self.embed(tau)
         # both_embed = torch.cat([joint_embed, tau_embed[:,:4]], dim=-1)
@@ -403,9 +403,16 @@ class DLMesh(nn.Module):
                 from .mlptexture import MLPTexture3D
                 self.mlp_texture = MLPTexture3D()
             else:
-                res = self.opt.albedo_res
-                albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
-                self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
+                if False:
+                    res = self.opt.albedo_res
+                    albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
+                    self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
+                else:
+                    albedo_image = cv2.imread("data/mesh_albedo.png")
+                    albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
+                    albedo_image = albedo_image.astype(np.float32) / 255.0
+                    self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
+                    self.raw_albedo = nn.Parameter(self.raw_albedo)
         else:
             albedo_image = cv2.imread("data/mesh_albedo.png")
             albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
@@ -435,7 +442,7 @@ class DLMesh(nn.Module):
                 self.expression = nn.Parameter(self.expression)
             # self.jaw_pose = nn.Parameter(self.jaw_pose)
         if not self.opt.lock_pose:
-            if self.opt.pose_mlp is None:
+            if self.opt.pose_mlp == "none":
                 if self.opt.use_6d:
                     if self.opt.use_full_pose:
                         self.full_pose_6d = nn.Parameter(self.full_pose_6d)
@@ -564,7 +571,7 @@ class DLMesh(nn.Module):
 
         if not self.opt.lock_pose:
 
-            if self.opt.pose_mlp is not None:
+            if self.opt.pose_mlp != "none":
                 params.append({'params': self.pose_mlp.parameters(), 'lr': lr})
             elif self.opt.use_6d:
                 if self.opt.use_full_pose:
@@ -598,7 +605,7 @@ class DLMesh(nn.Module):
         left_hand_pose = None
         right_hand_pose = None
         if not self.opt.lock_geo:
-            if self.opt.pose_mlp is not None: 
+            if self.opt.pose_mlp != "none": 
                 if not video: # image case
                     # TODO: Implement the pose mlp for non vpose case for image
                     if self.opt.model_change:
@@ -612,7 +619,7 @@ class DLMesh(nn.Module):
                     if self.opt.pose_mlp == "pose":
                         pose_mlp_output = self.pose_mlp(torch.tensor([frame_id],device=self.device))
                     elif self.opt.pose_mlp == "angle":
-                        angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
+                        #angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
                         joint_batch = self.joint_locations
                         frame_batch = torch.tensor([frame_id],device=self.device).repeat(21,1)
                         pose_mlp_output = self.pose_mlp(joint_batch,frame_batch)
@@ -689,7 +696,7 @@ class DLMesh(nn.Module):
             )
             v_cano = output.v_posed[0]
             landmarks = output.joints[0, -68:, :]
-
+            
             # re-mesh
             v_cano_dense = subdivide_inorder(v_cano, self.smplx_faces[self.remesh_mask], self.uniques[0])
 
@@ -706,16 +713,12 @@ class DLMesh(nn.Module):
             # LBS
             v_posed_dense = warp_points(v_cano_dense, self.dense_lbs_weights,
                                         output.joints_transform[:, :55]).squeeze(0)
-
             # if not is_train:
             v_posed_dense, center, scale = normalize_vert(v_posed_dense, return_cs=True)
-
             mesh = Mesh(v_posed_dense, self.faces_list[-1].int(), vt=self.vt, ft=self.ft)
             mesh.auto_normal()
-
             # if not self.opt.lock_tex and not self.opt.tex_mlp:
             mesh.set_albedo(self.raw_albedo)
-
         else:
             mesh = Mesh(base=self.mesh)
             mesh.set_albedo(self.raw_albedo)
@@ -882,9 +885,11 @@ class DLMesh(nn.Module):
             rgb_frame_list = []
             normal_frame_list = []
             smplx_landmarks_frame_list = []
+            smplx_3d_landmarks_frame_list = []
             prediction_list = []
             for i in range(frame_size):
                 pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train,frame_id=i)
+                smplx_3d_landmarks_frame_list.append(smplx_landmarks)
                 if self.add_fake_movement:
                     # logger.debug(f"Adding fake movement to frame {i}")
                     pr_mesh.v -= torch.tensor([0.0,0,0.25]).cuda()
@@ -904,6 +909,7 @@ class DLMesh(nn.Module):
             rgbt = torch.stack(rgb_frame_list,dim=0)
             normalt = torch.stack(normal_frame_list,dim=0)
             smplx_landmarkst = torch.stack(smplx_landmarks_frame_list,dim=0)
+            smplx_3d_landmarks = torch.stack(smplx_3d_landmarks_frame_list,dim=0)
             prediction = torch.stack(prediction_list,dim=0)
 
         else:
@@ -919,13 +925,13 @@ class DLMesh(nn.Module):
                                         torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
             smplx_landmarks = smplx_landmarks[..., :2] / smplx_landmarks[..., 2:3]
             smplx_landmarks = smplx_landmarks * 0.5 + 0.5
-
         if video:
             return {
                 "video": rgbt,
                 "alpha_vid": alpha,
                 "normal_vid": normalt,
                 "smplx_landmarks_vid": smplx_landmarkst,
+                "smplx_3d_landmarks_vid": smplx_3d_landmarks,
                 "prediction": prediction
             }
         else:
