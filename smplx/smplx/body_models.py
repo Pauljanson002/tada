@@ -1263,7 +1263,6 @@ class SMPLX(SMPLH):
         # Add any extra joints that might be needed
         joints = self.vertex_joint_selector(vertices, joints)
         joints_transform = self.vertex_joint_selector(vT, jT)
-
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
         # Map the joints to the current dataset

@@ -128,8 +128,10 @@ class PoseField(nn.Module):
         embeds = torch.cat([fn(inputs) for fn in self.embed_fns], -1)
         # logger.debug(embeds)
         return embeds
-    def forward(self, tau):
+    def forward(self, tau,prev_pose=None):
         x = self.embed(tau)
+        if prev_pose is not None:
+            x = torch.cat([x,prev_pose],dim=-1)
         output = self.layers(x)
         if self.pose_mlp_args.use_tanh_clamp:
             output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
@@ -317,6 +319,8 @@ class DLMesh(nn.Module):
                             self.init_body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                             self.init_body_pose_6d_set = self.init_body_pose_6d.repeat([self.num_frames,1])
                             self.init_body_pose_6d_set = matrix_to_rotation_6d(axis_angle_to_matrix(self.diving_body_pose.view(-1,3))).view(self.num_frames,-1).float()
+                            self.prev_pose = self.init_body_pose_6d_set
+                            self.prev_pose = torch.cat([self.prev_pose,self.prev_pose[None,0]],dim=0)
                             self.body_pose_6d = torch.zeros(self.init_body_pose_6d.shape).to(self.device)
                             self.body_pose_6d_set = torch.zeros(self.init_body_pose_6d_set.shape).to(self.device)
                 else:
@@ -368,6 +372,10 @@ class DLMesh(nn.Module):
                             self.pose_mlp = PoseField(
                                 8, [32, 32], 126, self.num_frames, self.opt.pose_mlp_args
                             )
+                    elif self.opt.pose_mlp == "kickstart":
+                        self.pose_mlp = PoseField(
+                            126+8, [128, 128], 126, self.num_frames, self.opt.pose_mlp_args
+                        )
                     else:
                         self.pose_mlp = AngleField(
                             32, [64, 64,64,64], 6, self.opt.pose_mlp_args
@@ -462,6 +470,7 @@ class DLMesh(nn.Module):
                                             num_faces=1)
         self.detector = vision.FaceLandmarker.create_from_options(options)
         self.joint_locations = torch.load("a.pt").to(self.device).squeeze(0)
+        self.count = 0
 
     @torch.no_grad()
     def get_init_body(self, cache_path='./data/init_body/data.npz'):
@@ -618,6 +627,9 @@ class DLMesh(nn.Module):
                     # Video case , with pose mlp
                     if self.opt.pose_mlp == "pose":
                         pose_mlp_output = self.pose_mlp(torch.tensor([frame_id],device=self.device))
+                    elif self.opt.pose_mlp == "kickstart":
+                        pose_mlp_output = self.pose_mlp(torch.tensor([frame_id],device=self.device),self.prev_pose[frame_id])
+                        self.prev_pose[frame_id+1] = pose_mlp_output.detach()
                     elif self.opt.pose_mlp == "angle":
                         #angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
                         joint_batch = self.joint_locations
@@ -696,7 +708,7 @@ class DLMesh(nn.Module):
             )
             v_cano = output.v_posed[0]
             landmarks = output.joints[0, -68:, :]
-            
+            joints = output.joints[0, :-68, :]
             # re-mesh
             v_cano_dense = subdivide_inorder(v_cano, self.smplx_faces[self.remesh_mask], self.uniques[0])
 
@@ -722,7 +734,7 @@ class DLMesh(nn.Module):
         else:
             mesh = Mesh(base=self.mesh)
             mesh.set_albedo(self.raw_albedo)
-        return mesh, landmarks ,prediction
+        return mesh, landmarks ,prediction,joints
 
     @torch.no_grad()
     def get_mesh_center_scale(self, phrase):
@@ -884,12 +896,12 @@ class DLMesh(nn.Module):
             frame_size = self.num_frames
             rgb_frame_list = []
             normal_frame_list = []
-            smplx_landmarks_frame_list = []
-            smplx_3d_landmarks_frame_list = []
+            smplx_joints_frame_list = []
+            smplx_3d_joints_frame_list = []
             prediction_list = []
             for i in range(frame_size):
-                pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train,frame_id=i)
-                smplx_3d_landmarks_frame_list.append(smplx_landmarks)
+                pr_mesh, smplx_landmarks,prediction,smplx_joints = self.get_mesh(is_train=is_train,frame_id=i)
+                smplx_3d_joints_frame_list.append(smplx_joints)
                 if self.add_fake_movement:
                     # logger.debug(f"Adding fake movement to frame {i}")
                     pr_mesh.v -= torch.tensor([0.0,0,0.25]).cuda()
@@ -898,18 +910,21 @@ class DLMesh(nn.Module):
                                             mlp_texture=self.mlp_texture, is_train=is_train)
                 rgb = rgb * alpha + (1 - alpha) * bg_color
                 normal = normal * alpha + (1 - alpha) * bg_color
-                smplx_landmarks = torch.bmm(F.pad(smplx_landmarks, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0),
-                                            torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
-                smplx_landmarks = smplx_landmarks[..., :2] / smplx_landmarks[..., 2:3]
-                smplx_landmarks = smplx_landmarks * 0.5 + 0.5
+                smplx_joints = torch.bmm(F.pad(smplx_joints, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(1,-1,-1),torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
+                
+                smplx_joints = smplx_joints[..., :2] / smplx_joints[..., 3:]
+                smplx_joints = smplx_joints * 0.5 + 0.5
                 rgb_frame_list.append(rgb)
                 normal_frame_list.append(normal)
-                smplx_landmarks_frame_list.append(smplx_landmarks)
+                smplx_joints_frame_list.append(smplx_joints)
                 prediction_list.append(prediction)
             rgbt = torch.stack(rgb_frame_list,dim=0)
             normalt = torch.stack(normal_frame_list,dim=0)
-            smplx_landmarkst = torch.stack(smplx_landmarks_frame_list,dim=0)
-            smplx_3d_landmarks = torch.stack(smplx_3d_landmarks_frame_list,dim=0)
+            smplx_joints = torch.stack(smplx_joints_frame_list,dim=0)
+            smplx_3d_joints = torch.stack(smplx_3d_joints_frame_list,dim=0)
+            # torch.save(smplx_3d_joints,"smplx_3d_joints.pt")
+            # torch.save(smplx_joints,f"smplx_joints_{self.count}.pt")
+            # self.count+=1
             prediction = torch.stack(prediction_list,dim=0)
 
         else:
@@ -930,8 +945,8 @@ class DLMesh(nn.Module):
                 "video": rgbt,
                 "alpha_vid": alpha,
                 "normal_vid": normalt,
-                "smplx_landmarks_vid": smplx_landmarkst,
-                "smplx_3d_landmarks_vid": smplx_3d_landmarks,
+                "smplx_joints_vid": smplx_joints,
+                "smplx_3d_joints_vid": smplx_3d_joints,
                 "prediction": prediction
             }
         else:

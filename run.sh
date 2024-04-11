@@ -1,7 +1,7 @@
 #! /bin/bash
 
 #CUDA_VISIBLE_DEVICES=0 python -m apps.run hydra.mode=MULTIRUN text="man" action="running" wandb_mode="disabled" model.model_change=True model.use_full_pose=False name=test training.debug=True guidance.name=zeroscope model.video=True model.num_frames=5 training.iters=10,100
-CUDA_VISIBLE_DEVICES=1 python -m apps.run --multirun \
+CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun \
     text="man" \
     action="running" \
     wandb_mode="disabled" \
@@ -15,7 +15,7 @@ CUDA_VISIBLE_DEVICES=1 python -m apps.run --multirun \
     model.lock_tex=True \
     model.lock_beta=True \
     model.lock_pose=False \
-    training.iters=15000 \
+    training.iters=1000 \
     training.accumulate=False \
     training.constraint_latent_weight=0.0 \
     training.optim="adam" \
@@ -27,11 +27,11 @@ CUDA_VISIBLE_DEVICES=1 python -m apps.run --multirun \
     model.model_change=True \
     data.h=256 \
     data.w=256 \
-    model.use_cubemap=True \
+    model.use_cubemap=False \
     fp16=True \
     training.scheduler="lambda" \
     model.add_fake_movement=False \
-    training.set_global_time_step=True \
+    training.set_global_time_step=False \
     training.lr=5e-5 \
     training.guidance_scale=100 \
     model.vpose=False \
@@ -42,7 +42,7 @@ CUDA_VISIBLE_DEVICES=1 python -m apps.run --multirun \
     training.use_ground_truth=False \
     training.use_landmarks=False \
     training.use_3d_landmarks=False \
-    model.pose_mlp="angle" \
+    model.pose_mlp="kickstart" \
 
 
 # CUDA_VISIBLE_DEVICES=0 python -m apps.run --config configs/tada_wo_dpt.yaml \

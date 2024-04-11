@@ -97,10 +97,10 @@ class Trainer(object):
         
         self.landmarks = []
         for i in range(4):
-            ldnmrk = torch.load(f"smplx_landmarks_{i+1}.pt").to("cuda")
+            ldnmrk = torch.load(f"smplx_joints_{i}.pt").to("cuda")
+            ldnmrk.requires_grad = False
             self.landmarks.append(ldnmrk)
-        self.landmarks_3d = torch.load("smplx_3d_landmarks.pt").to("cuda")
-
+        self.landmarks_3d = torch.load("smplx_3d_joints.pt").to("cuda")
         self.text_embeds = None
         if self.guidance is not None:
             for p in self.guidance.parameters():
@@ -298,7 +298,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                loss = self.guidance.train_step(dir_text_z, video_frames,view_id=kwargs.get("view_id",0),guidance_scale=self.opt.guidance_scale).mean()
+                loss = 1e-3 * self.guidance.train_step(dir_text_z, video_frames,view_id=kwargs.get("view_id",0),guidance_scale=self.opt.guidance_scale).mean()
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
                 loss = self.guidance.train_step(dir_text_z, normal_frames,guidance_scale=self.opt.guidance_scale).mean()
@@ -355,7 +355,7 @@ class Trainer(object):
 
             if self.opt.use_landmarks:
                 # L2 loss between the landmarks and the predicted landmarks
-                landmark_2d_loss = 1* F.mse_loss(out["smplx_landmarks_vid"].view(-1,2), self.landmarks[self.local_step].view(-1,2))
+                landmark_2d_loss = 1* F.mse_loss(out["smplx_joints_vid"].view(-1,2)[:,:], self.landmarks[self.local_step-1].view(-1,2)[:,:])
                 self.logger.debug(f"Landmark loss {self.local_step}: {landmark_2d_loss.item()}")
                 loss+= landmark_2d_loss
                 wandb.log({
@@ -365,7 +365,7 @@ class Trainer(object):
             
             if self.opt.use_3d_landmarks:
                 # L2 loss between the landmarks and the predicted landmarks
-                landmark_3d_loss = 1* F.mse_loss(out["smplx_3d_landmarks_vid"].view(-1,3), self.landmarks_3d.view(-1,3))
+                landmark_3d_loss = 1* F.mse_loss(out["smplx_3d_joints_vid"].view(-1,3), self.landmarks_3d.view(-1,3))
                 loss+= landmark_3d_loss
                 self.logger.debug(f"3D Landmark loss: {landmark_3d_loss.item()}")
                 wandb.log({
