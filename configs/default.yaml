@@ -50,6 +50,7 @@ training:
   set_global_time_step: True
   use_ground_truth: False
   use_landmarks: False
+  landmarks_count: 20
   use_3d_landmarks: True
 data:
   h: 256
@@ -104,7 +105,7 @@ model:
   pose_mlp: "angle"
   pose_mlp_args:
     tau_scale: 0.35
-    use_tanh_clamp: True
+    use_clamp: tanh
     tanh_scale: 1.0
     init_zero: False
   vpose: True

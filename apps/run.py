@@ -143,6 +143,8 @@ def main(cfg):
         valid_loader = build_dataloader('val')
         max_epoch = np.ceil(cfg.training.iters / (len(train_loader) * train_loader.batch_size)).astype(np.int32)
         print(f"max_epoch:{max_epoch}")
+        
+        
         trainer.train(train_loader, valid_loader, max_epoch)
 
         # test
