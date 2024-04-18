@@ -220,6 +220,8 @@ class Trainer(object):
         self.train_video_frames = []
         self.write_train_video = True
 
+        self.random_joint_mask = torch.randint(0, 70, (self.opt.landmarks_count,))
+
     # calculate the text embeddings.
     # Show : Text embeddings
     def prepare_text_embeddings(self):
@@ -425,40 +427,35 @@ class Trainer(object):
                         self.running_body_pose,
                     )
                 else:
-                    dummy_loss = F.mse_loss(
-                        out["prediction"].view(-1, 6),
-                        self.running_body_pose.view(-1, 6),
-                    )
-                self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
-                wandb.log(
-                    {
-                        "loss/dummy_truth_loss": dummy_loss.item(),
-                        "epoch": self.epoch,
-                    }
-                )
-                del dummy_loss
+                    if self.model.opt.pose_mlp != "none":
+                        dummy_loss = F.mse_loss(
+                            out["prediction"].view(-1, 6),
+                            self.running_body_pose.view(-1, 6),
+                        )
+                        self.logger.debug(f"Dummy loss: {dummy_loss.item()}")
+                        wandb.log(
+                            {
+                                "loss/dummy_truth_loss": dummy_loss.item(),
+                                "epoch": self.epoch,
+                            }
+                        )
+                        del dummy_loss
             # if self.model.vpose:
             #     # Constraint the size of the body pose 6d to norm 1
             #     loss += torch.norm(self.model.body_pose_6d_set, dim=1).mean()
 
             if self.opt.use_landmarks:
                 # L2 loss between the landmarks and the predicted landmarks
-                random_joint_mask = torch.tensor(
-                    [
-                        18,
-                        5,
-                    ]
-                )
                 landmark_2d_loss = 1 * F.mse_loss(
                     (
                         out["smplx_joints_vid"].view(self.model.num_frames, -1, 2)[
-                            :, random_joint_mask, :
+                            :, self.random_joint_mask, :
                         ]
                     ).view(-1, 2),
                     (
                         self.landmarks[self.local_step - 1].view(
                             self.model.num_frames, -1, 2
-                        )[:, random_joint_mask, :]
+                        )[:, self.random_joint_mask, :]
                     ).view(-1, 2),
                 )
                 self.logger.debug(

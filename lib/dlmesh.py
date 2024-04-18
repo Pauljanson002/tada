@@ -103,6 +103,9 @@ class PoseField(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.create_embedding_fn()
         self.pose_mlp_args = pose_mlp_args
+        self.twice_std_dev = torch.load("4d/poses/running_std_dev.pt").cuda().view(126)
+        self.max_val = torch.load("4d/poses/running_max.pt").float().cuda().view(126)
+        self.min_val = torch.load("4d/poses/running_min.pt").float().cuda().view(126)
 
     def create_embedding_fn(self):
         embed_fns = []
@@ -133,8 +136,12 @@ class PoseField(nn.Module):
         if prev_pose is not None:
             x = torch.cat([x,prev_pose],dim=-1)
         output = self.layers(x)
-        if self.pose_mlp_args.use_tanh_clamp:
+        if self.pose_mlp_args.use_clamp == "tanh":
             output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
+        elif self.pose_mlp_args.use_clamp == "std":
+            output = torch.clamp(output,-self.twice_std_dev,self.twice_std_dev)
+        elif self.pose_mlp_args.use_clamp == "maxmin":
+            output = torch.clamp(output,self.min_val,self.max_val)
         if self.pose_mlp_args.tau_scale > 0:
             output = output * tau**self.pose_mlp_args.tau_scale
         return output
@@ -196,7 +203,7 @@ class AngleField(nn.Module):
 
     def forward(self, joint_id, tau):
         # Embed the inputs
-        
+
         # joint_embed = self.embed(joint_id)
         # tau_embed = self.embed(tau)
         # both_embed = torch.cat([joint_embed, tau_embed[:,:4]], dim=-1)
@@ -208,7 +215,7 @@ class AngleField(nn.Module):
         # Scale the output by tau^(0.35) if specified in pose_mlp_args
 
         # Apply tanh activation and scale if specified in pose_mlp_args
-        if self.pose_mlp_args.use_tanh_clamp:
+        if self.pose_mlp_args.use_clamp == "tanh":
             output = (
                 torch.tanh(output / self.pose_mlp_args.tanh_scale)
                 * self.pose_mlp_args.tanh_scale
@@ -291,6 +298,12 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = np.repeat(self.diving_body_pose, self.num_frames, axis=0)
             elif self.opt.initialize_pose == "zero":
                 self.diving_body_pose = np.zeros((self.num_frames, 63))
+            elif self.opt.initialize_pose == "running_mean":
+                self.diving_body_pose = pickle.load(open("4d/poses/running_mean.pkl","rb"))
+                self.diving_body_pose = np.repeat(
+                    self.diving_body_pose, self.num_frames, axis=0
+                )
+
             self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
             self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:
@@ -631,7 +644,7 @@ class DLMesh(nn.Module):
                         pose_mlp_output = self.pose_mlp(torch.tensor([frame_id],device=self.device),self.prev_pose[frame_id])
                         self.prev_pose[frame_id+1] = pose_mlp_output.detach()
                     elif self.opt.pose_mlp == "angle":
-                        #angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
+                        # angle_batch = torch.arange(0,21,device=self.device).unsqueeze(1)
                         joint_batch = self.joint_locations
                         frame_batch = torch.tensor([frame_id],device=self.device).repeat(21,1)
                         pose_mlp_output = self.pose_mlp(joint_batch,frame_batch)
@@ -911,7 +924,7 @@ class DLMesh(nn.Module):
                 rgb = rgb * alpha + (1 - alpha) * bg_color
                 normal = normal * alpha + (1 - alpha) * bg_color
                 smplx_joints = torch.bmm(F.pad(smplx_joints, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(1,-1,-1),torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
-                
+
                 smplx_joints = smplx_joints[..., :2] / smplx_joints[..., 3:]
                 smplx_joints = smplx_joints * 0.5 + 0.5
                 rgb_frame_list.append(rgb)
