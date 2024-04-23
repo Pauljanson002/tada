@@ -631,8 +631,15 @@ class DLMesh(nn.Module):
                 if not video: # image case
                     # TODO: Implement the pose mlp for non vpose case for image
                     if self.opt.model_change:
-                        prediction = self.pose_mlp(self.body_pose_6d)
-                        body_pose = self.body_prior.decode((prediction + self.body_pose_6d).unsqueeze(0))['pose_body'].contiguous().view(1,-1)
+                        pose_mlp_output = self.pose_mlp(
+                            torch.tensor([0], device=self.device)
+                        )
+                        prediction = (
+                            pose_mlp_output + self.init_body_pose_6d
+                        )
+                        body_pose = matrix_to_axis_angle(
+                            rotation_6d_to_matrix(prediction.view(-1, 21, 6))
+                        ).view(1, -1)
                     else:
                         prediction = self.pose_mlp(self.body_pose_6d)
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)

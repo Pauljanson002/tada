@@ -44,7 +44,7 @@ CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun \
     training.use_landmarks=False \
     training.landmarks_count=20 \
     training.use_3d_landmarks=False \
-    model.pose_mlp="none" \
+    model.pose_mlp="pose" \
 
 
 # CUDA_VISIBLE_DEVICES=0 python -m apps.run --config configs/tada_wo_dpt.yaml \
