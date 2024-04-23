@@ -55,13 +55,13 @@ for i in range(1000):
         for i in range(4):
             if use_latents:
                 torchvision.io.write_video(
-                    f"/home/paulj/projects/TADA/{i}.mp4",
+                    f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
                     guidance.decode_latents(videos_list[i]).detach().cpu().permute(0,2,3,4,1).squeeze(0) * 255,
                     10,
                 )
             else:
                 torchvision.io.write_video(
-                    f"/home/paulj/projects/TADA/{i}.mp4",
+                    f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
                     videos_list[i].detach().cpu().permute(0,1,3,4,2).squeeze(0) * 255,
                     10,
                 )
@@ -89,7 +89,7 @@ for i in range(1000):
 for i in range(4):
     if use_latents:
         torchvision.io.write_video(
-            f"/home/paulj/projects/TADA/{i}.mp4",
+            f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
             guidance.decode_latents(videos_list[i])
             .detach()
             .cpu()
@@ -100,7 +100,7 @@ for i in range(4):
         )
     else:
         torchvision.io.write_video(
-            f"/home/paulj/projects/TADA/{i}.mp4",
+            f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
             videos_list[i].detach().cpu().permute(0, 1, 3, 4, 2).squeeze(0)
             * 255,
             10,

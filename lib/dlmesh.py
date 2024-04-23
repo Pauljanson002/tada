@@ -941,7 +941,7 @@ class DLMesh(nn.Module):
             prediction = torch.stack(prediction_list,dim=0)
 
         else:
-            pr_mesh, smplx_landmarks,prediction = self.get_mesh(is_train=is_train)
+            pr_mesh, smplx_landmarks,prediction,joints = self.get_mesh(is_train=is_train)
             rgb, normal, alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
                                             mlp_texture=self.mlp_texture, is_train=is_train)
             rgb = rgb * alpha + (1 - alpha) * bg_color
