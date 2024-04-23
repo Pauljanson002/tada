@@ -220,7 +220,11 @@ class Trainer(object):
         self.train_video_frames = []
         self.write_train_video = True
 
-        self.random_joint_mask = torch.randint(0, 70, (self.opt.landmarks_count,))
+        if self.opt.landmarks_count > 0:
+            self.random_joint_mask = torch.randint(0, 70, (self.opt.landmarks_count,))
+        else:
+            self.opt.use_landmarks = False
+
 
     # calculate the text embeddings.
     # Show : Text embeddings
