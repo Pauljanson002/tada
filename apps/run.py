@@ -38,13 +38,13 @@ def main(cfg):
             f.write(OmegaConf.to_yaml(cfg))
     seed_everything(cfg.seed)
 
-    def build_dataloader(phase):
+    def build_dataloader(phase,view_count=4):
         """
         Args:
             phase: str one of ['train', 'test' 'val']
         Returns:
         """
-        size = 100 if phase == 'val' else 4
+        size = 100 if phase == 'val' else view_count
         dataset = ViewDataset(cfg.data, device=device, type=phase, size=size)
         return DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
@@ -113,7 +113,7 @@ def main(cfg):
             trainer.save_mesh()
 
     else:
-        train_loader = build_dataloader('train')
+        train_loader = build_dataloader('train',cfg.view_count)
 
         scheduler, optimizer = configure_optimizer()
         try:

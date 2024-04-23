@@ -2,6 +2,7 @@ defaults:
   - _self_
 name: 'default'
 seed: 2222
+view_count: 4
 stage: "geo"
 fp16: True
 text: ""
