@@ -222,12 +222,12 @@ class Mesh():
 
         # save to cache
         # np.savez(cache_path, vt=vt_np, ft=ft_np)
-
         vt = torch.from_numpy(vt_np.astype(np.float32)).to(self.device)
         ft = torch.from_numpy(ft_np.astype(np.int32)).to(self.device)
 
         self.vt = vt
         self.ft = ft
+        self.vmapping = vmapping
         return vt, ft
 
     def compute_tangents(self):

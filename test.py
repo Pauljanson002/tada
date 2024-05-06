@@ -1,107 +1,60 @@
 import torch
+import smplx
+import trimesh
+import pyrender
+import fast_simplification
+import nvdiffrast.torch as dr
+import xatlas
+class MyClass:
+    def __init__(self):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.body_model = smplx.create(
+            model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz",
+            model_type='smplx',
+            create_global_orient=True,
+            create_body_pose=True,
+            create_betas=True,
+            create_left_hand_pose=True,
+            create_right_hand_pose=True,
+            create_jaw_pose=True,
+            create_leye_pose=True,
+            create_reye_pose=True,
+            create_expression=True,
+            create_transl=False,
+            use_pca=False,
+            use_face_contour=True,
+            flat_hand_mean=True,
+            num_betas=300,
+            num_expression_coeffs=100,
+            num_pca_comps=12,
+            dtype=torch.float32,
+            batch_size=1,
+        ).to(self.device)
 
-from lib.guidance.zeroscope import ZeroScope
+    def forward(self):
+        model_output = self.body_model(return_verts=True)  
+        vertices = model_output.vertices[0].cpu().detach().numpy()
+        faces = self.body_model.faces
+        # simplification
+        vertices, faces = fast_simplification.simplify(vertices, faces, 0.9)
+        mesh_trimesh = trimesh.Trimesh(vertices=vertices, faces=faces,)
+        vmapping , indices , uvs =  xatlas.parametrize(mesh_trimesh.vertices, mesh_trimesh.faces)
+        uvs = torch.tensor(uvs).to(self.device)
+        indices = torch.tensor(indices.astype(int)).to(self.device).to(torch.int32)
+        # self.glctx = dr.RasterizeCudaContext()
+        # B = 1
+        # mvp = torch.eye(4).unsqueeze(0).expand(B, -1, -1).to(self.device)
+        # v_clip = torch.bmm(torch.cat([torch.tensor(vertices.astype(float)).float().to(self.device), torch.ones((vertices.shape[0], 1)).float().to(self.device)], dim=1).unsqueeze(0).expand(B, -1, -1), torch.transpose(mvp, 1, 2)).float()
+        # res = (512, 512)
+        # rast, rast_db = dr.rasterize(self.glctx, v_clip, torch.tensor(faces).int().to(self.device), res)
+        # texc, texc_db = dr.interpolate(
+        #     uvs[None, ...], rast, indices, rast_db=rast_db, diff_attrs="all"
+        # )
 
-guidance = ZeroScope("cuda", True, False, t_range=[0.02, 0.98])
+        scene = pyrender.Scene()
+        scene.add(pyrender.Mesh.from_trimesh(mesh_trimesh,wireframe=True))
+        pyrender.Viewer(scene, use_raymond_lighting=True)
 
-import torchvision
-
-videos_list = []
-
-prompts = [
-    "a shot of front view of a man running in the beach, full-body",
-    "a shot of side view of a man running in the beach, full-body",
-    "a shot of back view of a man running in the beach, full-body",
-    "a shot of side view of a man running in the beach, full-body",
-]
-
-prompt_refs = [
-    "a shot of front view of a man in the beach, full-body",
-    "a shot of side view of a man in the beach, full-body",
-    "a shot of back view of a man in the beach, full-body",
-    "a shot of side view of a man in the beach, full-body",
-]
-
-
-text_embeds  = guidance.get_text_embeds(prompts)
-empty_embeds = guidance.get_text_embeds([""])
-text_embeds_dds = guidance.get_text_embeds(prompt_refs)
-
-use_latents = False
-
-
-for i in range(4):
-    video_read = torchvision.io.read_video(
-        f"/home/paulj/projects/TADA/4d/reference_videos/{i}.mp4"
-    )[0]
-    video_read = video_read.permute(0,3,1,2).float()/255
-    video_read = video_read[0].repeat(video_read.shape[0],1,1,1)
-    video_read = video_read.to("cuda")
-    if use_latents:
-        video_read = guidance.encode_imgs(video_read.permute(1, 0, 2, 3)[None])
-    else:
-        video_read = video_read[None]
-    video_read.requires_grad = True
-    videos_list.append(
-        video_read
-    )
-
-optimizer = torch.optim.AdamW(videos_list,lr=25e-3)
-
-
-for i in range(1000):
-    if i % 10 == 0:
-        print(f"Step {i}")
-        for i in range(4):
-            if use_latents:
-                torchvision.io.write_video(
-                    f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
-                    guidance.decode_latents(videos_list[i]).detach().cpu().permute(0,2,3,4,1).squeeze(0) * 255,
-                    10,
-                )
-            else:
-                torchvision.io.write_video(
-                    f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
-                    videos_list[i].detach().cpu().permute(0,1,3,4,2).squeeze(0) * 255,
-                    10,
-                )
-    for d in range(4):
-        dir_text_z = [
-            empty_embeds[0],
-            text_embeds[d],
-        ]
-        dir_text_z_dds = [
-            empty_embeds[0],
-            text_embeds_dds[d],
-        ]
-        dir_text_z = torch.stack(dir_text_z)
-        dir_text_z_dds = torch.stack(dir_text_z_dds)
-        optimizer.zero_grad()   
-        if not use_latents:
-            loss = guidance.train_step(dir_text_z, videos_list[d].squeeze(0), 10, use_latents)
-        else:
-            loss = guidance.train_step(dir_text_z, videos_list[d], 100, use_latents)
-        loss.backward()
-        optimizer.step()
-
-        # save all videos
-
-for i in range(4):
-    if use_latents:
-        torchvision.io.write_video(
-            f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
-            guidance.decode_latents(videos_list[i])
-            .detach()
-            .cpu()
-            .permute(0, 2, 3, 4, 1)
-            .squeeze(0)
-            * 255,
-            10,
-        )
-    else:
-        torchvision.io.write_video(
-            f"/home/paulj/projects/TADA/{i}_{use_latents}.mp4",
-            videos_list[i].detach().cpu().permute(0, 1, 3, 4, 2).squeeze(0)
-            * 255,
-            10,
-        )
+if __name__ == '__main__':
+    my_class = MyClass()
+    my_class.forward()

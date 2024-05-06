@@ -227,6 +227,29 @@ class AngleField(nn.Module):
         return output
 
 
+class DisplacementField(nn.Module):
+    def __init__(self, input_dim=3, hidden_dims=[4,4,4], output_dim=3, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        layers = []
+        for i in range(len(hidden_dims)):
+            if i == 0:
+                layers.append(nn.Linear(input_dim, hidden_dims[i]))
+            else:
+                layers.append(nn.Linear(hidden_dims[i - 1], hidden_dims[i]))
+            if i % 2 == 1:
+                layers.append(nn.LayerNorm(hidden_dims[i]))
+            layers.append(nn.ReLU())
+
+        layers.append(nn.Linear(hidden_dims[-1], output_dim))
+
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, inputs):
+        displacement = self.layers(inputs)
+        return displacement+inputs
+
+
 class DLMesh(nn.Module):
     def __init__(self, opt, num_layers_bg=2, hidden_dim_bg=16):
 
@@ -361,7 +384,7 @@ class DLMesh(nn.Module):
                         else:
                             self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
-
+            self.displacement = DisplacementField()
             self.global_orient = torch.as_tensor(smplx_params["global_orient"]).to(self.device)
 
             self.expression = torch.zeros(1, 100).to(self.device)
@@ -451,11 +474,9 @@ class DLMesh(nn.Module):
                     self.v_offsets =torch.zeros(N, 1,requires_grad=False).to(self.device)
                 else:
                     self.v_offsets = nn.Parameter(torch.zeros(N, 3))
-
             # shape
             if not self.lock_beta:
                 self.betas = nn.Parameter(self.betas)
-
             # expression
             rich_data = np.load("./data/talkshow/rich.npy")
             self.rich_params = torch.as_tensor(rich_data, dtype=torch.float32, device=self.device)
@@ -484,6 +505,8 @@ class DLMesh(nn.Module):
         self.detector = vision.FaceLandmarker.create_from_options(options)
         self.joint_locations = torch.load("a.pt").to(self.device).squeeze(0)
         self.count = 0
+        self.shading = self.opt.shading
+        self.simplify = self.opt.simplify
 
     @torch.no_grad()
     def get_init_body(self, cache_path='./data/init_body/data.npz'):
@@ -564,6 +587,10 @@ class DLMesh(nn.Module):
 
     def get_params(self, lr):
         params = []
+        
+        #!!!!!!!! temp
+        params.append({'params': self.displacement.parameters(), 'lr': lr})
+        
         if not self.opt.skip_bg: # default skip_bg = True
             params.append({'params': self.bg_net.parameters(), 'lr': lr})
 
@@ -730,24 +757,45 @@ class DLMesh(nn.Module):
             landmarks = output.joints[0, -68:, :]
             joints = output.joints[0, :-68, :]
             # re-mesh
-            v_cano_dense = subdivide_inorder(v_cano, self.smplx_faces[self.remesh_mask], self.uniques[0])
+            if not self.simplify:
+                v_cano_dense = subdivide_inorder(v_cano, self.smplx_faces[self.remesh_mask], self.uniques[0])
 
-            for unique, faces in zip(self.uniques[1:], self.faces_list[:-1]):
-                v_cano_dense = subdivide_inorder(v_cano_dense, faces, unique)
+                for unique, faces in zip(self.uniques[1:], self.faces_list[:-1]):
+                    v_cano_dense = subdivide_inorder(v_cano_dense, faces, unique)
 
-            # add offset before warp
-            if not self.opt.lock_geo:
-                if self.v_offsets.shape[1] ==1:
-                    vn = compute_normal(v_cano_dense, self.faces_list[-1])[0]
-                    v_cano_dense += self.get_vertex_offset(is_train) * vn
-                else:
-                    v_cano_dense += self.get_vertex_offset(is_train)
-            # LBS
-            v_posed_dense = warp_points(v_cano_dense, self.dense_lbs_weights,
-                                        output.joints_transform[:, :55]).squeeze(0)
-            # if not is_train:
-            v_posed_dense, center, scale = normalize_vert(v_posed_dense, return_cs=True)
-            mesh = Mesh(v_posed_dense, self.faces_list[-1].int(), vt=self.vt, ft=self.ft)
+                # #add offset before warp
+                if not self.opt.lock_geo:
+                    if self.v_offsets.shape[1] ==1:
+                        vn = compute_normal(v_cano_dense, self.faces_list[-1])[0]
+                        v_cano_dense += self.get_vertex_offset(is_train) * vn
+                    else:
+                        v_cano_dense += self.get_vertex_offset(is_train)
+                # LBS
+                v_posed_dense = warp_points(v_cano_dense, self.dense_lbs_weights,
+                                            output.joints_transform[:, :55]).squeeze(0)
+                # # if not is_train:
+                # v_posed_dense = v_cano
+                v_posed_dense, center, scale = normalize_vert(v_posed_dense, return_cs=True)
+                mesh = Mesh(v_posed_dense, self.faces_list[-1].int(), vt=self.vt, ft=self.ft)
+                # mesh = Mesh(
+                #     v_posed_dense,
+                #     torch.from_numpy(self.body_model.faces.astype(np.int32)).cuda())
+                # vt, ft = mesh.auto_uv()
+                # breakpoint()
+            else:
+                import fast_simplification
+                import xatlas
+                v_cano, center , scale  =  normalize_vert(
+                    v_cano, return_cs=True
+                )
+                vertices,faces = fast_simplification.simplify(v_cano.detach().cpu().numpy(),self.smplx_faces,0.9)
+                mesh_trimesh = trimesh.Trimesh(vertices,faces)
+                vmapping,indices,uvs = xatlas.parametrize(mesh_trimesh.vertices,mesh_trimesh.faces)
+                uvs = torch.tensor(uvs).cuda()
+                indices = torch.tensor(indices.astype(int)).cuda().to(torch.int32)
+                vertices = torch.from_numpy(vertices).cuda().float()
+                vertices = self.displacement(vertices)
+                mesh = Mesh(vertices,torch.from_numpy(faces).cuda(),vt=uvs,ft=indices)
             mesh.auto_normal()
             # if not self.opt.lock_tex and not self.opt.tex_mlp:
             mesh.set_albedo(self.raw_albedo)
