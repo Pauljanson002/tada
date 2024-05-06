@@ -52,7 +52,7 @@ class MyClass:
         # )
 
         scene = pyrender.Scene()
-        scene.add(pyrender.Mesh.from_trimesh(mesh_trimesh,wireframe=True))
+        scene.add(pyrender.Mesh.from_trimesh(mesh_trimesh,wireframe=False))
         pyrender.Viewer(scene, use_raymond_lighting=True)
 
 if __name__ == '__main__':

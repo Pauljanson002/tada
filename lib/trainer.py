@@ -225,7 +225,6 @@ class Trainer(object):
         else:
             self.opt.use_landmarks = False
 
-
     # calculate the text embeddings.
     # Show : Text embeddings
     def prepare_text_embeddings(self):
@@ -555,8 +554,10 @@ class Trainer(object):
                 if self.opt.rgb_sds:
                     if self.opt.dds:
                         loss = self.guidance.train_step(dir_text_z,image_annel,dds_embeds=dir_text_z_ref).mean()
+                        loss_dict["rgb_sds"] = loss.item()
                     else:
                         loss = self.guidance.train_step(dir_text_z, image_annel).mean()
+                        loss_dict["rgb_sds"] = loss.item()
                 else:
                     loss = 0
 

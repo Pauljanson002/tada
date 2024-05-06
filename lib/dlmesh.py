@@ -227,8 +227,10 @@ class AngleField(nn.Module):
         return output
 
 
-class DisplacementField(nn.Module):
-    def __init__(self, input_dim=3, hidden_dims=[4,4,4], output_dim=3, *args, **kwargs):
+class Displacement(nn.Module):
+    def __init__(
+        self, input_dim, hidden_dims, output_dim, pose_mlp_args, *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
         layers = []
@@ -243,11 +245,67 @@ class DisplacementField(nn.Module):
 
         layers.append(nn.Linear(hidden_dims[-1], output_dim))
 
-        self.layers = nn.Sequential(*layers)
+        if pose_mlp_args.init_zero:
+            layers[-1].weight.data.zero_()
+            layers[-1].bias.data.zero_()
 
-    def forward(self, inputs):
-        displacement = self.layers(inputs)
-        return displacement+inputs
+        self.layers = nn.Sequential(*layers)
+        self.create_embedding_fn()
+        self.pose_mlp_args = pose_mlp_args
+
+    def create_embedding_fn(self):
+        embed_fns = []
+        d = 1
+        out_dim = 0
+        if False:
+            embed_fns.append(lambda x: x)
+            out_dim += d
+        max_freq = 5
+        N_freqs = 4
+
+        embed_type = "nerf"
+        if embed_type == "transformer":
+            freq_bands = torch.tensor([1 / (10000 ** (2 * i / 4)) for i in range(4)])
+        else:
+            freq_bands = 2.0 ** torch.linspace(0.0, max_freq, steps=N_freqs)
+
+        for freq in freq_bands:
+            for p_fn in [torch.sin, torch.cos]:
+                embed_fns.append(lambda x, p_fn=p_fn, freq=freq: p_fn(x * freq))
+                out_dim += d
+
+        self.embed_fns = embed_fns
+        self.out_dim = out_dim
+
+    def embed(self, inputs):
+        embeds = torch.cat([fn(inputs) for fn in self.embed_fns], -1)
+        return embeds
+
+    def forward(self, position, tau):
+        # Embed the inputs
+
+        # joint_embed = self.embed(joint_id)
+        # tau_embed = self.embed(tau)
+        # both_embed = torch.cat([joint_embed, tau_embed[:,:4]], dim=-1)
+        # inputs = both_embed
+        joint_tau = torch.cat([position, tau], dim=-1)
+        inputs = self.embed(joint_tau)
+        output = self.layers(inputs)
+
+        # Scale the output by tau^(0.35) if specified in pose_mlp_args
+
+        # Apply tanh activation and scale if specified in pose_mlp_args
+        if self.pose_mlp_args.use_clamp == "tanh":
+            output = (
+                torch.tanh(output / self.pose_mlp_args.tanh_scale)
+                * self.pose_mlp_args.tanh_scale
+            )
+
+        if self.pose_mlp_args.tau_scale > 0:
+            output = output * tau**self.pose_mlp_args.tau_scale
+        output = output + position
+
+        return output
 
 
 class DLMesh(nn.Module):
@@ -384,7 +442,7 @@ class DLMesh(nn.Module):
                         else:
                             self.body_pose_6d = matrix_to_rotation_6d(axis_angle_to_matrix(self.body_pose.view(-1, 21, 3))).view(1, -1)
                 self.body_pose = None
-            self.displacement = DisplacementField()
+
             self.global_orient = torch.as_tensor(smplx_params["global_orient"]).to(self.device)
 
             self.expression = torch.zeros(1, 100).to(self.device)
@@ -393,6 +451,11 @@ class DLMesh(nn.Module):
             self.faces_list, self.dense_lbs_weights, self.uniques, self.vt, self.ft = self.get_init_body()
 
             N = self.dense_lbs_weights.shape[0]
+
+            self.simplify = self.opt.simplify
+            
+            if self.simplify:
+                self.opt.pose_mlp = "displacement"
 
             if self.opt.video:
                 if self.vpose:
@@ -428,9 +491,13 @@ class DLMesh(nn.Module):
                         self.pose_mlp = PoseField(
                             8, [32, 32], 126,self.num_frames,self.opt.pose_mlp_args
                         )
-                    else:
+                    elif self.opt.pose_mlp == "angle":
                         self.pose_mlp = AngleField(
                             16, [64, 64, 64, 64], 6, self.opt.pose_mlp_args
+                        )
+                    else:
+                        self.pose_mlp = Displacement(
+                            32, [64, 64, 64, 64], 3, self.opt.pose_mlp_args
                         )
             self.pose_mlp = self.pose_mlp.to(self.device)
 
@@ -506,7 +573,6 @@ class DLMesh(nn.Module):
         self.joint_locations = torch.load("a.pt").to(self.device).squeeze(0)
         self.count = 0
         self.shading = self.opt.shading
-        self.simplify = self.opt.simplify
 
     @torch.no_grad()
     def get_init_body(self, cache_path='./data/init_body/data.npz'):
@@ -587,10 +653,10 @@ class DLMesh(nn.Module):
 
     def get_params(self, lr):
         params = []
-        
-        #!!!!!!!! temp
-        params.append({'params': self.displacement.parameters(), 'lr': lr})
-        
+
+        # #!!!!!!!! temp
+        # params.append({"params": self.displacement.parameters(), "lr": lr})
+
         if not self.opt.skip_bg: # default skip_bg = True
             params.append({'params': self.bg_net.parameters(), 'lr': lr})
 
@@ -794,7 +860,7 @@ class DLMesh(nn.Module):
                 uvs = torch.tensor(uvs).cuda()
                 indices = torch.tensor(indices.astype(int)).cuda().to(torch.int32)
                 vertices = torch.from_numpy(vertices).cuda().float()
-                vertices = self.displacement(vertices)
+                vertices = self.pose_mlp(vertices,0)
                 mesh = Mesh(vertices,torch.from_numpy(faces).cuda(),vt=uvs,ft=indices)
             mesh.auto_normal()
             # if not self.opt.lock_tex and not self.opt.tex_mlp:
