@@ -137,7 +137,7 @@ class StableDiffusion(nn.Module):
         return text_embeddings
 
     def train_step(
-        self, text_embeddings, pred_rgb, guidance_scale=100, rgb_as_latents=False,**kwargs
+        self, text_embeddings, pred_rgb, guidance_scale=100, rgb_as_latents=False,dds_embeds=None,**kwargs
     ):
         if rgb_as_latents:
             latents = F.interpolate(
@@ -176,7 +176,13 @@ class StableDiffusion(nn.Module):
                 noise_pred = self.unet(
                     latent_model_input, tt, encoder_hidden_states=text_embeddings
                 ).sample
-
+            if dds_embeds is not None:
+                with torch.cuda.amp.autocast():
+                    #! We can do this without gradients
+                    noise_pred_dds = self.unet(
+                        latent_model_input, tt, encoder_hidden_states=dds_embeds
+                    ).sample
+                    noise_pred_uncond_dds, noise_pred_text_dds = noise_pred_dds.chunk(2)
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
 
@@ -188,6 +194,8 @@ class StableDiffusion(nn.Module):
             noise_pred = noise_pred_uncond + guidance_scale * (
                 noise_pred_text - noise_pred_uncond
             )
+            if dds_embeds is not None:
+                noise_pred_dds = noise_pred_uncond_dds + guidance_scale * (noise_pred_text_dds - noise_pred_uncond_dds)
 
         # w(t), sigma_t^2
         if self.weighting_strategy == "sds":
@@ -199,8 +207,10 @@ class StableDiffusion(nn.Module):
             raise ValueError(
                 f"Unknown weighting strategy: {self.cfg.weighting_strategy}"
             )
-
-        grad = w * (noise_pred - noise)
+        if dds_embeds is not None:
+            grad = w * (noise_pred - noise_pred_dds)
+        else:
+            grad = w * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
 
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad

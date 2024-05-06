@@ -125,7 +125,7 @@ class ZeroScope(nn.Module):
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
             latents = self.encode_imgs(pred_rgbt)
         
-        # Before : latents = torch.mean(latents, keepdim=True, dim=0)
+        # Before : latents = torch.mean(latents, keepdim=True, dim=0) #! Todo: Why ?????
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         if self.global_time_step is None:
@@ -153,7 +153,7 @@ class ZeroScope(nn.Module):
 
         # perform guidance (high scale from paper!)
         if dds_embeds is not None:
-            noise_pred_dds = noise_pred_text_dds + guidance_scale * (noise_pred_text_dds - noise_pred_uncond_dds)
+            noise_pred_dds = noise_pred_uncond_dds + guidance_scale * (noise_pred_text_dds - noise_pred_uncond_dds)
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         # w(t), sigma_t^2

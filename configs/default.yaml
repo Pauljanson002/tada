@@ -41,6 +41,7 @@ training:
   lambda_depth: 10
   use_dpt: False
   rgb_sds: True
+  dds: False
   normal_sds: False
   mean_sds: False
   accumulate: True

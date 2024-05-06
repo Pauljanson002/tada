@@ -242,6 +242,12 @@ class Trainer(object):
                     ]
                 ),
             }
+            self.text_embeds_ref = {
+                "uncond": self.guidance.get_text_embeds([self.negative]),
+                "default": self.guidance.get_text_embeds(
+                    [f"a shot of a {self.text} in the {self.context}, full-body"]
+                ),
+            }
         else:
             self.text_embeds = {
                 "uncond": self.guidance.get_text_embeds([self.negative]),
@@ -256,6 +262,14 @@ class Trainer(object):
                     d: self.guidance.get_text_embeds(
                         [
                             f"a shot of {d} view of a {self.text} {self.action} in the {self.context}, full-body"
+                        ]
+                    )
+                    for d in ["front", "side", "back", "overhead"]
+                }
+                self.text_embeds_ref["body"] = {
+                    d: self.guidance.get_text_embeds(
+                        [
+                            f"a shot of {d} view of a {self.text} in the {self.context}, full-body"
                         ]
                     )
                     for d in ["front", "side", "back", "overhead"]
@@ -329,8 +343,13 @@ class Trainer(object):
             self.text_embeds["uncond"],
             self.text_embeds[data["camera_type"][0]][data["dirkey"][0]],
         ]
+        dir_text_z_ref = [
+            self.text_embeds_ref["uncond"],
+            self.text_embeds_ref[data["camera_type"][0]][data["dirkey"][0]],
+        ]
         dir_text_z = torch.cat(dir_text_z)
-        out = self.model(rays_o, rays_d, mvp, data["H"], data["W"], shading="albedo")
+        dir_text_z_ref = torch.cat(dir_text_z_ref)
+        out = self.model(rays_o, rays_d, mvp, data["H"], data["W"], shading=self.model.shading)
         video = self.model.opt.video
         if not video:
             image = out["image"].permute(0, 3, 1, 2)
@@ -339,7 +358,7 @@ class Trainer(object):
 
         # Show losses
         if not video:
-            out_annel = self.model(rays_o, rays_d, mvp, H, W, shading="albedo")
+            out_annel = self.model(rays_o, rays_d, mvp, H, W, shading=self.model.shading)
             image_annel = out_annel["image"].permute(0, 3, 1, 2)
             normal_annel = out_annel["normal"].permute(0, 3, 1, 2)
             alpha_annel = out_annel["alpha"].permute(0, 3, 1, 2)
@@ -534,7 +553,10 @@ class Trainer(object):
             # rgb sds
             if not video:
                 if self.opt.rgb_sds:
-                    loss = self.guidance.train_step(dir_text_z, image_annel).mean()
+                    if self.opt.dds:
+                        loss = self.guidance.train_step(dir_text_z,image_annel,dds_embeds=dir_text_z_ref).mean()
+                    else:
+                        loss = self.guidance.train_step(dir_text_z, image_annel).mean()
                 else:
                     loss = 0
 
@@ -582,7 +604,7 @@ class Trainer(object):
         mvp = data["mvp"]
         rays_o = data["rays_o"]  # [B, N, 3]
         rays_d = data["rays_d"]  # [B, N, 3]
-        out = self.model(rays_o, rays_d, mvp, H, W, shading="albedo", is_train=False)
+        out = self.model(rays_o, rays_d, mvp, H, W, shading=self.model.shading, is_train=False)
         if not self.model.opt.video:
             w = out["normal"].shape[2]
             pred = torch.cat(
@@ -609,7 +631,7 @@ class Trainer(object):
         mvp = data["mvp"]
         rays_o = data["rays_o"]  # [B, N, 3]
         rays_d = data["rays_d"]  # [B, N, 3]
-        out = self.model(rays_o, rays_d, mvp, H, W, shading="albedo", is_train=False)
+        out = self.model(rays_o, rays_d, mvp, H, W, shading=self.model.shading, is_train=False)
 
         if not self.model.opt.video:
             w = out["normal"].shape[2]
@@ -879,17 +901,23 @@ class Trainer(object):
                 t_pred = pred_np.transpose(1, 0, 2, 3)
                 t_pred = t_pred.reshape(t_pred.shape[0], -1, t_pred.shape[3])
                 self.train_video_frames.append(t_pred)
-            self.scaler.scale(loss).backward()
+            try:
+                self.scaler.scale(loss).backward()
+            except RuntimeError as e:
+                print(e)
             if self.opt.accumulate:
                 for n_p, p in self.model.named_parameters():
                     if p.requires_grad and p.grad is not None:
                         temp_grads[n_p] += p.grad
 
             if not self.opt.accumulate:
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                if self.scheduler_update_every_step:
-                    self.lr_scheduler.step()
+                try:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    if self.scheduler_update_every_step:
+                        self.lr_scheduler.step()
+                except Exception as e:
+                    print(e)
 
             loss_val = loss.item()
             total_sds_loss += loss_dict.get("rgb_sds", 0)
