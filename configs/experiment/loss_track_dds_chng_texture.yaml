@@ -1,0 +1,62 @@
+# @package _global_
+
+defaults:
+  - _self_
+
+hydra:
+  sweeper:
+    params:
+      training.dds: true,false
+      model.shading: albedo,normal
+
+
+text: "man"
+action: "running"
+wandb_mode: "disabled"
+save_mesh: false
+name: "loss_track_dds_chng_texture"
+training:
+  debug: false
+  accumulate: false
+  constraint_latent_weight: 0.0
+  optim: "adam"
+  anneal_tex_reso: false
+  rgb_sds: true
+  normal_sds: false
+  mean_sds: false
+  regularize_coeff: 1e-6
+  iters: 1000
+  scheduler: "none"
+  lr: 5e-3
+  guidance_scale: 100
+  set_global_time_step: false
+  use_ground_truth: false
+  use_landmarks: false
+  landmarks_count: 20
+  use_3d_landmarks: false
+  # dds: false
+model:
+  video: false
+  num_frames: 10
+  lock_tex: true
+  lock_beta: true
+  lock_pose: false
+  initialize_pose: "running_mean"
+  model_change: true
+  h: 256
+  w: 256
+  use_cubemap: true
+  add_fake_movement: false
+  vpose: false
+  pose_mlp: "pose"
+  pose_mlp_args:
+    tau_scale: 0.0
+    use_clamp: "maxmin"
+    tanh_scale: 1.3
+    init_zero: false
+  # shading: albedo
+  simplify: true
+fp16: true
+guidance:
+  name: "sd"
+  loss_type: "standard"

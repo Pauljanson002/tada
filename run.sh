@@ -46,7 +46,7 @@
 #     training.use_3d_landmarks=False \
 #     model.pose_mlp="pose" \
 
-CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun +experiment=tmp
+CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun +experiment=loss_track_dds_chng_texture
 # CUDA_VISIBLE_DEVICES=0 python -m apps.run --config configs/tada_wo_dpt.yaml \
 #     --text "man" \
 #     --action "walking"

@@ -110,6 +110,7 @@ model:
     tanh_scale: 1.0
     init_zero: False
   vpose: True
+  shading: "albedo"
 smpl:
   model_path: 'data/smpl_related/models'
   model_type: 'smpl_vitruvian'
