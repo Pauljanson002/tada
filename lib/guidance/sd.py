@@ -102,11 +102,11 @@ class StableDiffusion(nn.Module):
         # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
         # self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
-        
+
         # turn off gradinet for all parameters
         for param in self.parameters():
             param.requires_grad = False
-        
+
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
@@ -146,11 +146,10 @@ class StableDiffusion(nn.Module):
             latents = latents * 2 - 1
         else:
             pred_rgb_512 = F.interpolate(
-                pred_rgb, (512, 512), mode="bilinear", align_corners=False
+                pred_rgb, (256, 256), mode="bilinear", align_corners=False
             )
             latents = self.encode_imgs(pred_rgb_512)
-        latents = torch.mean(latents, keepdim=True, dim=0)  # does nothing specific
-
+        # latents = torch.mean(latents, keepdim=True, dim=0)  # does nothing specific
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         if self.global_time_step is None:
             t = torch.randint(
@@ -172,6 +171,8 @@ class StableDiffusion(nn.Module):
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
+            text_embeddings = text_embeddings.repeat_interleave(latents.shape[0],dim=0)
+
             with torch.cuda.amp.autocast():
                 noise_pred = self.unet(
                     latent_model_input, tt, encoder_hidden_states=text_embeddings
@@ -244,10 +245,9 @@ class StableDiffusion(nn.Module):
                 result_noisier_image = self.decode_latents(
                     latents_noisy.to(pred_x0).type(self.precision_t)
                 )
-                
+
                 # Visualize grad image
                 grad_image = self.decode_latents(grad)
-                
 
                 # TODO: also denoise all-the-way
 

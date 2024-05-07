@@ -50,7 +50,12 @@ def main(cfg):
 
     def configure_guidance():
         opt = cfg.guidance
-        if opt.name == 'sd':
+        
+        if opt.name == "both":
+            from lib.guidance.sd import StableDiffusion
+            from lib.guidance.zeroscope import ZeroScope
+            return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+        elif opt.name == 'sd':
             from lib.guidance.sd import StableDiffusion
             return StableDiffusion(device, cfg.fp16, opt.vram_O, opt.sd_version,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type)
         elif opt.name == 'if':
@@ -118,6 +123,10 @@ def main(cfg):
         scheduler, optimizer = configure_optimizer()
         try:
             guidance = configure_guidance()
+            if isinstance(guidance,tuple):
+                guidance,guidance_2 = guidance
+            else:
+                guidance_2 = None
         except:
             guidance = configure_guidance()
         wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["phase_1"],mode=cfg.wandb_mode,reinit=True,group="_".join(cfg.name.split('_')[:-1]))
@@ -135,7 +144,8 @@ def main(cfg):
                         optimizer=optimizer,
                         fp16=cfg.fp16,
                         lr_scheduler=scheduler,
-                        scheduler_update_every_step=False
+                        scheduler_update_every_step=False,
+                        guidance_2=guidance_2
                         )
         if os.path.exists(cfg.data.image):
             trainer.default_view_data = train_loader.dataset.get_default_view_data()

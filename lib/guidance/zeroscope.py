@@ -66,16 +66,16 @@ class ZeroScope(nn.Module):
             model_key = "cerspense/zeroscope_v2_576w"
             self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
-        
+
         self.cpu_off_load = False
         if self.cpu_off_load:
             self.pipe.enable_sequential_cpu_offload()
-        
+
         self.vae = self.pipe.vae.eval()
         self.tokenizer = self.pipe.tokenizer
         self.text_encoder = self.pipe.text_encoder
         self.unet = self.pipe.unet.eval()
-        
+
         for p in self.vae.parameters():
             p.requires_grad = False
         for p in self.unet.parameters():
@@ -87,14 +87,14 @@ class ZeroScope(nn.Module):
         # self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
         # self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
 
-        
-        #TODO SJC (DDPM scheudler)
+        # TODO SJC (DDPM scheudler)
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
-        
+
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):
@@ -124,7 +124,7 @@ class ZeroScope(nn.Module):
             pred_rgbt = F.interpolate(pred_rgbt, (256, 256), mode='bilinear', align_corners=False)
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
             latents = self.encode_imgs(pred_rgbt)
-        
+
         # Before : latents = torch.mean(latents, keepdim=True, dim=0) #! Todo: Why ?????
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
@@ -134,7 +134,7 @@ class ZeroScope(nn.Module):
             logger.debug(f"Using global time step: {self.global_time_step}")
             t = self.global_time_step
 
-        # TODO: SJC not implemented need to check what it is and whether it helps 
+        # TODO: SJC not implemented need to check what it is and whether it helps
         # _t = time.time()
         with torch.no_grad():
             # add noise
@@ -171,7 +171,7 @@ class ZeroScope(nn.Module):
         else:
             grad = w * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
-        
+
         if False:
             with torch.no_grad():
                 grad_visual = self.decode_latents(grad)
@@ -179,8 +179,8 @@ class ZeroScope(nn.Module):
                 grad_visual = (grad_visual * 255).to(torch.uint8)
                 torchvision.io.write_video("grad_visual.mp4", grad_visual, 5)
                 breakpoint()
-        
-        # TODO: Do we need gradient clipping ? 
+
+        # TODO: Do we need gradient clipping ?
         # if grad clip
         # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
@@ -282,22 +282,20 @@ class ZeroScope(nn.Module):
 
         return latents
 
-
-
     def encode_imgs(self, imgs,normalize = True):
         # imgs: [B, 3,F, H, W]
         if len(imgs.shape) == 4:
             print("Image is provided instead of a video adding time = 1")
             imgs = imgs[:,:,None]
-            
+
         batch_size,channels, num_frames,height , width = imgs.shape
-        
+
         imgs = imgs.permute(0,2,1,3,4).reshape(batch_size*num_frames,channels,height,width)
         input_dtype = imgs.dtype
-        
+
         if normalize:
             imgs = 2 * imgs - 1
-        
+
         with torch.cuda.amp.autocast():
             posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
             latents = posterior.sample() * self.vae.config.scaling_factor
@@ -315,7 +313,7 @@ class ZeroScope(nn.Module):
             .permute(0, 2, 1, 3, 4)
         )
         return latents.to(input_dtype)
-    
+
     @torch.cuda.amp.autocast(enabled=True)
     def decode_latents(self, latents):
         # TODO: Make decoding align with previous version
@@ -338,10 +336,9 @@ class ZeroScope(nn.Module):
             )
             .permute(0, 2, 1, 3, 4)
         )
-    
+
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         return video
-    
 
     def prompt_to_video(self, prompts, negative_prompts='', height=512, width=512, num_inference_steps=50,num_frames=5,
                     guidance_scale=7.5, latents=None):

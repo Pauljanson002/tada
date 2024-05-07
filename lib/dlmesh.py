@@ -453,7 +453,7 @@ class DLMesh(nn.Module):
             N = self.dense_lbs_weights.shape[0]
 
             self.simplify = self.opt.simplify
-            
+
             if self.simplify:
                 self.opt.pose_mlp = "displacement"
 
@@ -720,7 +720,7 @@ class DLMesh(nn.Module):
         left_hand_pose = None
         right_hand_pose = None
         if not self.opt.lock_geo:
-            if self.opt.pose_mlp != "none": 
+            if self.opt.pose_mlp != "none" and self.opt.pose_mlp != "displacement": 
                 if not video: # image case
                     # TODO: Implement the pose mlp for non vpose case for image
                     if self.opt.model_change:
@@ -860,7 +860,10 @@ class DLMesh(nn.Module):
                 uvs = torch.tensor(uvs).cuda()
                 indices = torch.tensor(indices.astype(int)).cuda().to(torch.int32)
                 vertices = torch.from_numpy(vertices).cuda().float()
-                vertices = self.pose_mlp(vertices,0)
+                frame_batch = torch.tensor([frame_id+1], device=self.device).repeat(
+                    vertices.shape[0], 1
+                )
+                vertices = self.pose_mlp(vertices,frame_batch.cuda())
                 mesh = Mesh(vertices,torch.from_numpy(faces).cuda(),vt=uvs,ft=indices)
             mesh.auto_normal()
             # if not self.opt.lock_tex and not self.opt.tex_mlp:

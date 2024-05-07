@@ -43,6 +43,7 @@ class Trainer(object):
         opt,  # extra conf
         model,  # network
         guidance,  # guidance network
+        guidance_2 = None,
         criterion=None,  # loss function, if None, assume inline implementation in step
         optimizer=None,  # optimizer
         ema_decay=None,  # if use EMA, set the decay
@@ -105,6 +106,7 @@ class Trainer(object):
 
         # guide model
         self.guidance = guidance
+        self.guidance_2 = guidance_2
         # self.guidance = torch.nn.DataParallel(self.guidance, device_ids=[0, 1, 2, 3]).module
         # text prompt
 
@@ -130,6 +132,9 @@ class Trainer(object):
             for p in self.guidance.parameters():
                 p.requires_grad = False
             self.prepare_text_embeddings()
+        if self.guidance_2 is not None:
+            for p in self.guidance_2.parameters():
+                p.requires_grad = False
 
         # # try out torch 2.0
         # if torch.__version__[0] == '2':
@@ -390,6 +395,17 @@ class Trainer(object):
                         guidance_scale=self.opt.guidance_scale,
                     ).mean()
                 )
+                if self.guidance_2 is not None:
+                    loss += (
+                        1e-3
+                        * self.guidance_2.train_step(
+                            dir_text_z,
+                            video_frames,
+                            view_id=kwargs.get("view_id", 0),
+                            guidance_scale=self.opt.guidance_scale,
+                        ).mean()
+                    )
+                
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
                 loss = self.guidance.train_step(
