@@ -386,7 +386,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                loss = (
+                loss = self.opt.g1_coeff * (
                     1e-3
                     * self.guidance.train_step(
                         dir_text_z,
@@ -395,8 +395,9 @@ class Trainer(object):
                         guidance_scale=self.opt.guidance_scale,
                     ).mean()
                 )
+                loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
                 if self.guidance_2 is not None:
-                    loss += (
+                    loss_2 = self.opt.g2_coeff * (
                         1e-3
                         * self.guidance_2.train_step(
                             dir_text_z,
@@ -405,6 +406,8 @@ class Trainer(object):
                             guidance_scale=self.opt.guidance_scale,
                         ).mean()
                     )
+                    loss_dict[f"individual_sds/{str(type(self.guidance_2))}"] = loss_2.item()
+                    loss += loss_2
                 
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
