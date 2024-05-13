@@ -409,7 +409,7 @@ class Trainer(object):
                     )
                     loss_dict[f"individual_sds/{str(type(self.guidance_2))}"] = loss_2.item()
                     loss += loss_2
-                
+
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
                 loss = self.guidance.train_step(

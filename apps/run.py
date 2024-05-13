@@ -129,7 +129,7 @@ def main(cfg):
                 guidance_2 = None
         except:
             guidance = configure_guidance()
-        wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["phase_1"],mode=cfg.wandb_mode,reinit=True,group="_".join(cfg.name.split('_')[:-1]))
+        wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["phase_3"],mode=cfg.wandb_mode,reinit=True,group="_".join(cfg.name.split('_')[:-1]))
 
 
         trainer = Trainer(cfg.name,

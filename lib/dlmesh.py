@@ -139,7 +139,7 @@ class PoseField(nn.Module):
         if self.pose_mlp_args.use_clamp == "tanh":
             output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
         elif self.pose_mlp_args.use_clamp == "std":
-            output = torch.clamp(output,-self.twice_std_dev,self.twice_std_dev)
+            output = output * self.twice_std_dev/2
         elif self.pose_mlp_args.use_clamp == "maxmin":
             output = torch.clamp(output,self.min_val,self.max_val)
         if self.pose_mlp_args.tau_scale > 0:
@@ -750,7 +750,7 @@ class DLMesh(nn.Module):
                         pose_mlp_output = self.pose_mlp(joint_batch,frame_batch)
                         pose_mlp_output = pose_mlp_output.view(1,-1)
                     if self.opt.model_change:
-                        prediction = pose_mlp_output + self.init_body_pose_6d_set[frame_id]
+                        prediction = torch.clamp(pose_mlp_output + self.init_body_pose_6d_set[frame_id],self.pose_mlp.min_val,self.pose_mlp.max_val)
                     else:
                         prediction = pose_mlp_output
                     if self.vpose:
