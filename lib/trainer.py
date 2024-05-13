@@ -386,11 +386,12 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
+                rand_frames = torch.randint(0, video_frames.shape[0], (2,))
                 loss = self.opt.g1_coeff * (
                     1e-3
                     * self.guidance.train_step(
                         dir_text_z,
-                        video_frames,
+                        video_frames[rand_frames],
                         view_id=kwargs.get("view_id", 0),
                         guidance_scale=self.opt.guidance_scale,
                     ).mean()
