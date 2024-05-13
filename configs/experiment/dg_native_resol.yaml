@@ -1,0 +1,63 @@
+# @package _global_
+
+defaults:
+  - _self_
+
+hydra:
+  sweeper:
+    params:
+      view_count:4,100
+
+text: "man"
+action: "running"
+wandb_mode: "online"
+save_mesh: false
+name: "dg_native_resol"
+view_count: 4
+training:
+  debug: false
+  accumulate: false
+  constraint_latent_weight: 0.0
+  optim: "adam"
+  anneal_tex_reso: false
+  rgb_sds: true
+  normal_sds: false
+  mean_sds: false
+  regularize_coeff: 0.0
+  iters: 1000
+  scheduler: "none"
+  lr: 0.005
+  guidance_scale: 100
+  set_global_time_step: false
+  use_ground_truth: false
+  use_landmarks: false
+  landmarks_count: 20
+  use_3d_landmarks: false
+  dds: false
+  g1_coeff: 1.0
+  g2_coeff: 0.05
+model:
+  video: true
+  num_frames: 5
+  lock_tex: false
+  lock_beta: true
+  lock_pose: false
+  initialize_pose: "running_mean"
+  model_change: true
+  h: 256
+  w: 256
+  use_cubemap: true
+  add_fake_movement: false
+  vpose: false
+  pose_mlp: "pose"
+  pose_mlp_args:
+    tau_scale: 0.0
+    use_clamp: "maxmin"
+    tanh_scale: 1.3
+    init_zero: true
+    shading: albedo
+  simplify: false
+fp16: true
+guidance:
+  name: "both"
+  loss_type: "standard"
