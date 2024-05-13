@@ -146,10 +146,11 @@ class StableDiffusion(nn.Module):
             latents = latents * 2 - 1
         else:
             pred_rgb_512 = F.interpolate(
-                pred_rgb, (256, 256), mode="bilinear", align_corners=False
+                pred_rgb, (512, 512), mode="bilinear", align_corners=False
             )
             latents = self.encode_imgs(pred_rgb_512)
         # latents = torch.mean(latents, keepdim=True, dim=0)  # does nothing specific
+        # latents = latents[None,0]
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         if self.global_time_step is None:
             t = torch.randint(
