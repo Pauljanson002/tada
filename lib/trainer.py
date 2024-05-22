@@ -386,7 +386,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                rand_frames = torch.randint(0, video_frames.shape[0], (2,))
+                rand_frames = torch.randint(0, video_frames.shape[0], (1,))
                 loss = self.opt.g1_coeff * (
                     1e-3
                     * self.guidance.train_step(
@@ -398,11 +398,13 @@ class Trainer(object):
                 )
                 loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
                 if self.guidance_2 is not None:
+                    frame_size = 5
+                    frame_start =  torch.randint(0, video_frames.shape[0] - frame_size, (1,))
                     loss_2 = self.opt.g2_coeff * (
                         1e-3
                         * self.guidance_2.train_step(
                             dir_text_z,
-                            video_frames,
+                            video_frames[frame_start : frame_start + frame_size],
                             view_id=kwargs.get("view_id", 0),
                             guidance_scale=self.opt.guidance_scale,
                         ).mean()
