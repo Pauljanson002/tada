@@ -6,15 +6,13 @@ defaults:
 hydra:
   sweeper:
     params:
-      training.regularize_coeff: 0.0,1e-6,1e-3
-      training.g2_coeff: 0.05,0.001,1.0
-      training.lr: 0.005,0.0005
+      training.iters: 10000,20000,50000,100000
 
 text: "man"
 action: "running"
 wandb_mode: "online"
 save_mesh: false
-name: "dg_native_resol"
+name: "dg_2_after_best"
 view_count: 100
 training:
   debug: false
@@ -25,10 +23,10 @@ training:
   rgb_sds: true
   normal_sds: false
   mean_sds: false
-  regularize_coeff: 0.0
+  regularize_coeff: 0.001
   iters: 10000
   scheduler: "none"
-  lr: 0.005
+  lr: 0.0005
   guidance_scale: 100
   set_global_time_step: false
   use_ground_truth: false
@@ -37,10 +35,10 @@ training:
   use_3d_landmarks: false
   dds: false
   g1_coeff: 1.0
-  g2_coeff: 0.05
+  g2_coeff: 1.0
 model:
   video: true
-  num_frames: 8
+  num_frames: 24
   lock_tex: false
   lock_beta: true
   lock_pose: false
@@ -60,11 +58,9 @@ model:
     shading: albedo
   simplify: false
 fp16: true
-
-data:
-  phi_range: [0,360]
-  theta_range: [75, 75]
-
 guidance:
   name: "both"
   loss_type: "standard"
+data:
+  phi_range: [0,360]
+  theta_range: [75, 75]
