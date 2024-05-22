@@ -229,6 +229,8 @@ class Trainer(object):
             self.random_joint_mask = torch.randint(0, 70, (self.opt.landmarks_count,))
         else:
             self.opt.use_landmarks = False
+            
+        self.save_freq = 50
 
     # calculate the text embeddings.
     # Show : Text embeddings
@@ -386,31 +388,33 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                rand_frames = torch.randint(0, video_frames.shape[0], (1,))
-                loss = self.opt.g1_coeff * (
-                    1e-3
-                    * self.guidance.train_step(
-                        dir_text_z,
-                        video_frames[rand_frames],
-                        view_id=kwargs.get("view_id", 0),
-                        guidance_scale=self.opt.guidance_scale,
-                    ).mean()
-                )
-                loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
-                if self.guidance_2 is not None:
-                    frame_size = 5
-                    frame_start =  torch.randint(0, video_frames.shape[0] - frame_size, (1,))
-                    loss_2 = self.opt.g2_coeff * (
+                if self.local_step % 2 == 0:
+                    rand_frames = torch.randint(0, video_frames.shape[0], (5,))
+                    loss = self.opt.g1_coeff * (
                         1e-3
-                        * self.guidance_2.train_step(
+                        * self.guidance.train_step(
                             dir_text_z,
-                            video_frames[frame_start : frame_start + frame_size],
+                            video_frames[rand_frames],
                             view_id=kwargs.get("view_id", 0),
                             guidance_scale=self.opt.guidance_scale,
                         ).mean()
                     )
-                    loss_dict[f"individual_sds/{str(type(self.guidance_2))}"] = loss_2.item()
-                    loss += loss_2
+                    loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
+                if self.guidance_2 is not None:
+                    if self.local_step % 2 == 1:
+                        frame_size = 10
+                        frame_start =  torch.randint(0, video_frames.shape[0] - frame_size, (1,))
+                        loss_2 = self.opt.g2_coeff * (
+                            1e-3
+                            * self.guidance_2.train_step(
+                                dir_text_z,
+                                video_frames[frame_start : frame_start + frame_size],
+                                view_id=kwargs.get("view_id", 0),
+                                guidance_scale=self.opt.guidance_scale,
+                            ).mean()
+                        )
+                        loss_dict[f"individual_sds/{str(type(self.guidance_2))}"] = loss_2.item()
+                        loss = loss_2
 
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
@@ -897,7 +901,8 @@ class Trainer(object):
                 data, loader.dataset.full_body, view_id=view_id
             )
 
-            if self.global_step % 50 == 0:
+            if self.global_step % self.save_freq == 0:
+                self.save_freq = 50
                 if not video:
                     pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
                     save_path = os.path.join(

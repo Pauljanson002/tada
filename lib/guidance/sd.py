@@ -89,6 +89,8 @@ class StableDiffusion(nn.Module):
             model_key, torch_dtype=self.precision_t
         ).to(self.device)
 
+        self.pipe.enable_sequential_cpu_offload()
+
         self.scheduler = self.pipe.scheduler
         self.vae = self.pipe.vae
         self.unet = self.pipe.unet

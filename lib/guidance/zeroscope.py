@@ -67,7 +67,7 @@ class ZeroScope(nn.Module):
             self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
 
-        self.cpu_off_load = False
+        self.cpu_off_load = True
         if self.cpu_off_load:
             self.pipe.enable_sequential_cpu_offload()
 
