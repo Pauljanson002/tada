@@ -450,23 +450,11 @@ class ViewDataset(torch.utils.data.Dataset):
         return data
 
     def __getitem__(self, idx):
-        if False:
-        # if self.training:
+        if self.training:
             # random pose on the fly
             if self.full_body:
                 camera_type = "body"
-                # poses, dirs, thetas, phis, radius = rand_poses(
-                #     1,
-                #     self.device,
-                #     return_dirs=self.opt.dir_text,
-                #     radius_range=self.opt.radius_range,
-                #     phi_range=self.opt.phi_range,
-                #     theta_range=self.opt.theta_range,
-                #     angle_overhead=self.opt.angle_overhead,
-                #     angle_front=self.opt.angle_front,
-                #     jitter=self.opt.jitter_pose,
-                #     uniform_sphere_rate=self.opt.uniform_sphere_rate)
-                poses, dirs, thetas, phis, radius = near_head_poses(
+                poses, dirs, thetas, phis, radius = rand_poses(
                     1,
                     self.device,
                     return_dirs=self.opt.dir_text,
@@ -476,9 +464,20 @@ class ViewDataset(torch.utils.data.Dataset):
                     angle_overhead=self.opt.angle_overhead,
                     angle_front=self.opt.angle_front,
                     jitter=self.opt.jitter_pose,
-                    shift=self.body_center,
-                    face_scale=self.body_scale
-                )
+                    uniform_sphere_rate=self.opt.uniform_sphere_rate)
+                # poses, dirs, thetas, phis, radius = near_head_poses(
+                #     1,
+                #     self.device,
+                #     return_dirs=self.opt.dir_text,
+                #     radius_range=self.opt.radius_range,
+                #     phi_range=self.opt.phi_range,
+                #     theta_range=self.opt.theta_range,
+                #     angle_overhead=self.opt.angle_overhead,
+                #     angle_front=self.opt.angle_front,
+                #     jitter=self.opt.jitter_pose,
+                #     shift=self.body_center,
+                #     face_scale=self.body_scale
+                # )
 
             else:
                 camera_type = "face"
