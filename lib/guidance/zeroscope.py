@@ -67,11 +67,12 @@ class ZeroScope(nn.Module):
             self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16)
 
-        self.cpu_off_load = True
+        self.cpu_off_load = False
         if self.cpu_off_load:
             self.pipe.enable_sequential_cpu_offload()
 
         self.vae = self.pipe.vae.eval()
+        del self.vae.decoder
         self.tokenizer = self.pipe.tokenizer
         self.text_encoder = self.pipe.text_encoder
         self.unet = self.pipe.unet.eval()
@@ -94,7 +95,6 @@ class ZeroScope(nn.Module):
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):

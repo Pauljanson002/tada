@@ -89,10 +89,11 @@ class StableDiffusion(nn.Module):
             model_key, torch_dtype=self.precision_t
         ).to(self.device)
 
-        self.pipe.enable_sequential_cpu_offload()
+        #self.pipe.enable_sequential_cpu_offload()
 
         self.scheduler = self.pipe.scheduler
         self.vae = self.pipe.vae
+        del self.vae.decoder    
         self.unet = self.pipe.unet
         self.text_encoder = self.pipe.text_encoder
         self.tokenizer = self.pipe.tokenizer
@@ -405,7 +406,7 @@ class StableDiffusion(nn.Module):
         imgs = 2 * imgs - 1
         with torch.cuda.amp.autocast():
             posterior = self.vae.encode(imgs).latent_dist
-        latents = posterior.sample() * self.vae.config.scaling_factor
+            latents = posterior.sample() * self.vae.config.scaling_factor
 
         return latents
 

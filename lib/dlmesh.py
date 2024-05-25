@@ -29,7 +29,8 @@ import pickle
 import math
 import logging
 logger = logging.getLogger(__name__)
-
+import os 
+cwd = os.getcwd()
 
 def sinusoidal_embedding(dim,frame_limit):
     # pe = torch.FloatTensor(
@@ -103,9 +104,9 @@ class PoseField(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.create_embedding_fn()
         self.pose_mlp_args = pose_mlp_args
-        self.twice_std_dev = torch.load("4d/poses/running_std_dev.pt").cuda().view(126)
-        self.max_val = torch.load("4d/poses/running_max.pt").float().cuda().view(126)
-        self.min_val = torch.load("4d/poses/running_min.pt").float().cuda().view(126)
+        self.twice_std_dev = torch.load(f"{cwd}/4d/poses/running_std_dev.pt").cuda().view(126)
+        self.max_val = torch.load(f"{cwd}/4d/poses/running_max.pt").float().cuda().view(126)
+        self.min_val = torch.load(f"{cwd}/4d/poses/running_min.pt").float().cuda().view(126)
 
     def create_embedding_fn(self):
         embed_fns = []
@@ -326,7 +327,7 @@ class DLMesh(nn.Module):
             self.mesh.auto_normal()
         else:  # geometry
             self.body_model = smplx.create(
-                model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz",
+                model_path=f"{cwd}/data/smplx/SMPLX_NEUTRAL_2020.npz",
                 model_type='smplx',
                 create_global_orient=True,
                 create_body_pose=True,
@@ -355,7 +356,7 @@ class DLMesh(nn.Module):
                 self.body_prior = vp.to(self.device)
             for p in self.body_model.parameters():
                 p.requires_grad = False
-            param_file = "./data/init_body/fit_smplx_params.npz"
+            param_file = f"{cwd}/data/init_body/fit_smplx_params.npz"
             smplx_params = dict(np.load(param_file))
             self.betas = torch.as_tensor(smplx_params["betas"]).to(self.device)
             self.jaw_pose = torch.as_tensor(smplx_params["jaw_pose"]).to(self.device)
@@ -380,7 +381,7 @@ class DLMesh(nn.Module):
             elif self.opt.initialize_pose == "zero":
                 self.diving_body_pose = np.zeros((self.num_frames, 63))
             elif self.opt.initialize_pose == "running_mean":
-                self.diving_body_pose = pickle.load(open("4d/poses/running_mean.pkl","rb"))
+                self.diving_body_pose = pickle.load(open(f"{cwd}/4d/poses/running_mean.pkl","rb"))
                 self.diving_body_pose = np.repeat(
                     self.diving_body_pose, self.num_frames, axis=0
                 )
@@ -519,7 +520,7 @@ class DLMesh(nn.Module):
                     albedo = torch.ones((res, res, 3), dtype=torch.float32) * 0.5  # default color
                     self.raw_albedo = nn.Parameter(trunc_rev_sigmoid(albedo))
                 else:
-                    albedo_image = cv2.imread("data/mesh_albedo.png")
+                    albedo_image = cv2.imread(f"{cwd}/data/mesh_albedo.png")
                     albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
                     albedo_image = albedo_image.astype(np.float32) / 255.0
                     self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
@@ -545,7 +546,7 @@ class DLMesh(nn.Module):
             if not self.lock_beta:
                 self.betas = nn.Parameter(self.betas)
             # expression
-            rich_data = np.load("./data/talkshow/rich.npy")
+            rich_data = np.load(f"{cwd}/data/talkshow/rich.npy")
             self.rich_params = torch.as_tensor(rich_data, dtype=torch.float32, device=self.device)
             if not self.opt.lock_expression:
                 self.expression = nn.Parameter(self.expression)
@@ -564,13 +565,13 @@ class DLMesh(nn.Module):
                     self.body_pose = nn.Parameter(self.body_pose)
 
         # Create an FaceLandmarker object.
-        base_options = python.BaseOptions(model_asset_path='data/mediapipe/face_landmarker.task')
+        base_options = python.BaseOptions(model_asset_path=f'{cwd}/data/mediapipe/face_landmarker.task')
         options = vision.FaceLandmarkerOptions(base_options=base_options,
                                             output_face_blendshapes=True,
                                             output_facial_transformation_matrixes=True,
                                             num_faces=1)
         self.detector = vision.FaceLandmarker.create_from_options(options)
-        self.joint_locations = torch.load("a.pt").to(self.device).squeeze(0)
+        self.joint_locations = torch.load(f"{cwd}/a.pt").to(self.device).squeeze(0)
         self.count = 0
         self.shading = self.opt.shading
 
@@ -578,7 +579,7 @@ class DLMesh(nn.Module):
     def get_init_body(self, cache_path='./data/init_body/data.npz'):
         if True:
             if self.num_remeshing == 1:
-                cache_path = './data/init_body/data.npz'
+                cache_path = f'{cwd}/data/init_body/data.npz'
                 data = np.load(cache_path)
                 faces_list = [torch.as_tensor(data['dense_faces'], device=self.device)]
                 dense_lbs_weights = torch.as_tensor(data['dense_lbs_weights'], device=self.device)
@@ -847,6 +848,7 @@ class DLMesh(nn.Module):
                 #     v_posed_dense,
                 #     torch.from_numpy(self.body_model.faces.astype(np.int32)).cuda())
                 # vt, ft = mesh.auto_uv()
+            
                 # breakpoint()
             else:
                 import fast_simplification
