@@ -390,7 +390,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                selected_frames = torch.randint(0, video_frames.size(0), (5,))
+                selected_frames = torch.randint(0, video_frames.size(0), (10,))
                 loss = self.opt.g1_coeff * (
                     1e-3
                     * self.guidance.train_step(
