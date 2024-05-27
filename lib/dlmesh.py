@@ -751,7 +751,7 @@ class DLMesh(nn.Module):
                         pose_mlp_output = self.pose_mlp(joint_batch,frame_batch)
                         pose_mlp_output = pose_mlp_output.view(1,-1)
                     if self.opt.model_change:
-                        prediction = torch.clamp(pose_mlp_output + self.init_body_pose_6d_set[frame_id],self.pose_mlp.min_val,self.pose_mlp.max_val)
+                        prediction = pose_mlp_output + self.init_body_pose_6d_set[frame_id]
                     else:
                         prediction = pose_mlp_output
                     if self.vpose:
