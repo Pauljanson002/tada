@@ -351,9 +351,8 @@ class DLMesh(nn.Module):
 
             self.smplx_faces = self.body_model.faces.astype(np.int32)
 
-            if self.vpose:
-                vp , ps = load_model('V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=True)
-                self.body_prior = vp.to(self.device)
+            vp , ps = load_model('V02_05', model_code=VPoser, remove_words_in_model_weights='vp_model.',disable_grad=True)
+            self.body_prior = vp.to(self.device)
             for p in self.body_model.parameters():
                 p.requires_grad = False
             param_file = f"{cwd}/data/init_body/fit_smplx_params.npz"
@@ -385,8 +384,13 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = np.repeat(
                     self.diving_body_pose, self.num_frames, axis=0
                 )
+            elif self.opt.initialize_pose == "boxing":
+                self.diving_body_pose = torch.load(f"{cwd}/boxing_start.pt")
+                self.diving_body_pose = matrix_to_axis_angle(self.diving_body_pose.view(-1, 3, 3))[None,:21,:].view(1,-1).cuda()
+                self.diving_body_pose = self.diving_body_pose.repeat([self.num_frames,1])
 
-            self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
+            if not isinstance(self.diving_body_pose, torch.Tensor):
+                self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
             self.diving_body_pose = self.diving_body_pose[:self.num_frames,:]
             if self.opt.use_6d:
                 if self.opt.model_change:
@@ -848,7 +852,7 @@ class DLMesh(nn.Module):
                 #     v_posed_dense,
                 #     torch.from_numpy(self.body_model.faces.astype(np.int32)).cuda())
                 # vt, ft = mesh.auto_uv()
-            
+
                 # breakpoint()
             else:
                 import fast_simplification

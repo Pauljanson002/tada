@@ -392,7 +392,7 @@ class Trainer(object):
             if self.opt.rgb_sds:
                 selected_frames = torch.randint(0, video_frames.size(0), (5,))
                 loss = self.opt.g1_coeff * (
-                    1e-3
+                    1.0
                     * self.guidance.train_step(
                         dir_text_z,
                         video_frames[selected_frames],
@@ -408,7 +408,7 @@ class Trainer(object):
                     video_frames = out["video"].squeeze(1)
                     video_frames = video_frames.permute(0, 3, 1, 2)
                     loss = self.opt.g2_coeff * (
-                        1e-3
+                        1.0
                         * self.guidance_2.train_step(
                             dir_text_z,
                             video_frames,
@@ -447,6 +447,15 @@ class Trainer(object):
                     )
                     loss += constraint_loss
                     loss_dict["constraint_latent"] = constraint_loss.item()
+
+            if self.model.opt.pose_mlp is not None:
+                encoded_vpose = self.model.body_prior.encode(
+                    matrix_to_axis_angle(
+                        rotation_6d_to_matrix((out["prediction"]+self.model.init_body_pose_6d_set).view(-1, 6))
+                    ).view(self.model.num_frames, -1)
+                ).mean
+                # add quadratic penalty to the latent space
+                loss += self.opt.q_p**2 * encoded_vpose.pow(2).sum()
 
             if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose
