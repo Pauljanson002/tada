@@ -93,7 +93,6 @@ class StableDiffusion(nn.Module):
 
         self.scheduler = self.pipe.scheduler
         self.vae = self.pipe.vae
-        del self.vae.decoder    
         self.unet = self.pipe.unet
         self.text_encoder = self.pipe.text_encoder
         self.tokenizer = self.pipe.tokenizer
@@ -458,7 +457,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt", type=str)
-    parser.add_argument("--negative", default="bad anatomy,no subject, half visible,part visible", type=str)
+    parser.add_argument("--negative", default="bad anatomy,no subject, incomplete", type=str)
     parser.add_argument(
         "--sd_version",
         type=str,
@@ -472,8 +471,8 @@ if __name__ == "__main__":
         default=None,
         help="hugging face Stable diffusion model key",
     )
-    parser.add_argument("-H", type=int, default=256)
-    parser.add_argument("-W", type=int, default=256)
+    parser.add_argument("-H", type=int, default=512)
+    parser.add_argument("-W", type=int, default=512)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--steps", type=int, default=999)
     opt = parser.parse_args()
@@ -488,26 +487,17 @@ if __name__ == "__main__":
     subjects = ["man"]
     # opt.negative
     imgs = [
-        np.vstack(
-            [
-                sd.prompt_to_img(
-                    f"a shot of {v} view of a {prompt} running in the beach, full-body ",
-                    opt.negative,
-                    opt.H,
-                    opt.W,
-                    opt.steps,
-                )[0]
-                for v in [
-                    "side view", "back view",
-                    "side view",
-                    # "overhead view"
-                ]
-            ]
-        )
+        sd.prompt_to_img(
+            f"a boxer punching in the beach side view , full-body visible, 4k , realistic",
+            opt.negative,
+            opt.H,
+            opt.W,
+            opt.steps,
+        )[0]
         for prompt in subjects
     ]
 
-    cv2.imwrite("superman.png", np.hstack(imgs)[..., ::-1])
+    cv2.imwrite("start.png", np.hstack(imgs)[..., ::-1])
 
     # visualize image
     # plt.imshow(imgs[0])
