@@ -7,13 +7,13 @@ hydra:
   sweeper:
     params:
       training.regularize_coeff: 5e-4,1e-3
-      training.iters: 10000
+      model.pose_mlp_args.use_clamp: std,none,tanh
 
 text: "man"
 action: "running"
 wandb_mode: "online"
 save_mesh: false
-name: "dg_3_after_best"
+name: "dg_4_after_best"
 view_count: 100
 training:
   debug: false
@@ -39,7 +39,7 @@ training:
   g2_coeff: 1.0
 model:
   video: true
-  num_frames: 24
+  num_frames: 16
   lock_tex: false
   lock_beta: true
   lock_pose: false
