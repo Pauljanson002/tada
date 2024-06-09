@@ -529,11 +529,13 @@ class DLMesh(nn.Module):
                     albedo_image = albedo_image.astype(np.float32) / 255.0
                     self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
                     self.raw_albedo = nn.Parameter(self.raw_albedo)
+                    self.copy_albedo = self.raw_albedo.clone().detach().requires_grad_(False)
         else:
             albedo_image = cv2.imread("data/mesh_albedo.png")
             albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
             albedo_image = albedo_image.astype(np.float32) / 255.0
             self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
+            self.copy_albedo = self.raw_albedo.clone().requires_grad_(False)
 
         # Geometry parameters
         if not self.opt.lock_geo:
@@ -1049,6 +1051,8 @@ class DLMesh(nn.Module):
                     # logger.debug(f"Adding fake movement to frame {i}")
                     pr_mesh.v -= torch.tensor([0.0,0,0.25]).cuda()
                     pr_mesh.v += torch.tensor([0.0,0,0.025 * i]).cuda() 
+                if shading == "old":
+                    pr_mesh.set_albedo(self.copy_albedo)
                 rgb,normal,alpha = self.renderer(pr_mesh, mvp, h, w, light_d, ambient_ratio, shading, self.opt.ssaa,
                                             mlp_texture=self.mlp_texture, is_train=is_train)
                 rgb = rgb * alpha + (1 - alpha) * bg_color

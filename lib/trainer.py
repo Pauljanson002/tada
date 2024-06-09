@@ -390,7 +390,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                selected_frames = torch.randint(0, video_frames.size(0), (10,))
+                selected_frames = torch.randint(0, video_frames.size(0), (self.model.num_frames//2,))
                 loss = self.opt.g1_coeff * (
                     1.0
                     * self.guidance.train_step(
@@ -642,7 +642,7 @@ class Trainer(object):
         mvp = data["mvp"]
         rays_o = data["rays_o"]  # [B, N, 3]
         rays_d = data["rays_d"]  # [B, N, 3]
-        out = self.model(rays_o, rays_d, mvp, H, W, shading=self.model.shading, is_train=False)
+        out = self.model(rays_o, rays_d, mvp, H, W, shading="old", is_train=False)
         if not self.model.opt.video:
             w = out["normal"].shape[2]
             pred = torch.cat(
@@ -669,7 +669,7 @@ class Trainer(object):
         mvp = data["mvp"]
         rays_o = data["rays_o"]  # [B, N, 3]
         rays_d = data["rays_d"]  # [B, N, 3]
-        out = self.model(rays_o, rays_d, mvp, H, W, shading=self.model.shading, is_train=False)
+        out = self.model(rays_o, rays_d, mvp, H, W, shading="old", is_train=False)
 
         if not self.model.opt.video:
             w = out["normal"].shape[2]
@@ -913,7 +913,6 @@ class Trainer(object):
             )
 
             if self.global_step % self.save_freq == 0:
-                self.save_freq = 50
                 if not video:
                     pred = cv2.cvtColor(pred_rgbs, cv2.COLOR_RGB2BGR)
                     save_path = os.path.join(

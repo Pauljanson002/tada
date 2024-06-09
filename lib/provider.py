@@ -353,7 +353,7 @@ class ViewDataset(torch.utils.data.Dataset):
         mvp = torch.stack(mvp)
         dir = torch.stack(dir)
 
-        rgb, normals, alpha = render(mesh, mvp, 512, 512, None, 1, "albedo")
+        rgb, normals, alpha = render(mesh, mvp, 256, 256, None, 1, "albedo")
         normals = normals.cpu().numpy()
         views = ['front', 'side', 'back', 'overhead', 'front', 'side']
 

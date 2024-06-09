@@ -96,7 +96,7 @@ model:
   albedo_res: 1024
   init_empty_tex: True
   replace_hands_eyes: True
-  ssaa: 2
+  ssaa: 1
   video: True
   num_frames: 14
   use_cubemap: True

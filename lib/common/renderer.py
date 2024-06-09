@@ -18,8 +18,8 @@ class Renderer(torch.nn.Module):
             self.glctx = dr.RasterizeGLContext()
 
     def forward(self, mesh, mvp,
-                h=512,
-                w=512,
+                h=256,
+                w=256,
                 light_d=None,
                 ambient_ratio=1.,
                 shading='albedo',
@@ -48,10 +48,9 @@ class Renderer(torch.nn.Module):
         B = mvp.shape[0]
         v_clip = torch.bmm(F.pad(mesh.v, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(B, -1, -1),
                            torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
-        # translate the by 1.0 
+        # translate the by 1.0
         res = (int(h * spp), int(w * spp)) if spp > 1 else (h, w)
         rast, rast_db = dr.rasterize(self.glctx, v_clip, mesh.f, res)
-
         ################################################################################
         # Interpolate attributes
         ################################################################################
@@ -72,15 +71,36 @@ class Renderer(torch.nn.Module):
                 albedo = self.get_mlp_texture(mesh, mlp_texture, rast, rast_db)
             else:
                 albedo = self.get_2d_texture(mesh, rast, rast_db)
-
         if shading == 'normal':
             color = (normal + 1) / 2.
         elif shading == 'albedo':
             color = albedo
+        elif shading == "old":
+            color = albedo
         else:  # lambertian
-            lambertian = ambient_ratio + (1 - ambient_ratio) * (normal @ light_d.view(-1, 1)).float().clamp(min=0)
-            color = albedo * lambertian.repeat(1, 1, 1, 3)
+            blue_color = torch.tensor([0, 0, 1], dtype=torch.float32,device="cuda").view(1, 1, 1, 3)  # Shape: (1, 1, 1, 3)
 
+            # Reshape `normal` to match `light_d` for the dot product
+            normal_flat = normal.view(-1, 3)  # Shape: (65536, 3)
+
+            # Ensure `light_d` is in the correct shape for broadcasting (should already be correct)
+            light_d = light_d.view(-1, 3)  # Shape: (65536, 3)
+
+            # Calculate the dot product between `normal_flat` and `light_d`
+            dot_product = (normal_flat * light_d).sum(dim=1)  # Shape: (65536,)
+
+            # Calculate the Lambertian component
+            lambertian = ambient_ratio + (1 - ambient_ratio) * dot_product.float().clamp(min=0)  # Shape: (65536,)
+
+            # Reshape `lambertian` to match the final image dimensions
+            lambertian = lambertian.view(256, 256, 1)  # Shape: (256, 256, 1)
+            lambertian = lambertian.repeat(1, 1, 3)  # Shape: (256, 256, 3)
+
+            # Create a blue color tensor with the same dimensions as `lambertian`
+            blue_color = blue_color.repeat(1,256, 256, 1)  # Shape: (256, 256, 3)
+
+            # Element-wise multiplication to apply Lambertian shading to the blue color
+            color = blue_color * lambertian  # Shape: (256, 256, 3)
         normal = (normal + 1) / 2.
 
         normal = dr.antialias(normal, rast, v_clip, mesh.f).clamp(0, 1)  # [H, W, 3]
@@ -97,7 +117,6 @@ class Renderer(torch.nn.Module):
         # enclose the mesh in a cube
         # rasterize the cube
         # render the cube
-
 
         return color, normal, alpha
 
