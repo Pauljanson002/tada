@@ -384,10 +384,11 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = np.repeat(
                     self.diving_body_pose, self.num_frames, axis=0
                 )
-            elif self.opt.initialize_pose == "boxing":
-                self.diving_body_pose = torch.load(f"{cwd}/boxing_start.pt")
-                self.diving_body_pose = matrix_to_axis_angle(self.diving_body_pose.view(-1, 3, 3))[None,:21,:].view(1,-1).cuda()
-                self.diving_body_pose = self.diving_body_pose.repeat([self.num_frames,1])
+            elif self.opt.initialize_pose == "punching_start":
+                self.diving_body_pose = torch.load(f"{cwd}/4d/poses/punching_start.pt")["smplx_body_pose"]
+                self.diving_body_pose = self.diving_body_pose.repeat(
+                    [self.num_frames, 1]
+                )
 
             if not isinstance(self.diving_body_pose, torch.Tensor):
                 self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
