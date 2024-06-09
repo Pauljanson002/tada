@@ -8,12 +8,13 @@ hydra:
     params:
       training.regularize_coeff: 5e-4,1e-3
       model.pose_mlp_args.use_clamp: std,none,tanh
+      action: running,punching
 
 text: "man"
 action: "running"
 wandb_mode: "online"
 save_mesh: false
-name: "dg_4_after_best"
+name: "dg_5_after_best"
 view_count: 100
 training:
   debug: false
