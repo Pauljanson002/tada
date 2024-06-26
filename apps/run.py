@@ -82,7 +82,7 @@ def main(cfg):
         if opt.optim == 'adan':
             from lib.common.optimizer import Adan
             optimizer = lambda model: Adan(
-                model.get_params(opt.lr * 10 ), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
+                model.get_params(opt.lr), eps=1e-8, weight_decay=2e-5, max_grad_norm=0.5, foreach=False)
         else:  # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(opt.lr), betas=(0.9, 0.99), eps=1e-15)
 

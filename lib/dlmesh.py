@@ -671,10 +671,10 @@ class DLMesh(nn.Module):
         if not self.opt.lock_tex: # default lock_tex = False
             if self.opt.tex_mlp: # default tex_mlp = False
                 params.extend([
-                    {'params': self.mlp_texture.parameters(), 'lr': lr * 10},
+                    {'params': self.mlp_texture.parameters(), 'lr': lr},
                 ])
             else:
-                params.append({'params': self.raw_albedo, 'lr': lr * 10})
+                params.append({'params': self.raw_albedo, 'lr': lr})
 
         if not self.opt.lock_geo:
             if self.opt.geo_mlp:
@@ -940,7 +940,7 @@ class DLMesh(nn.Module):
             light_d = (rays_o[0] + torch.randn(3, device=rays_o.device, dtype=torch.float))
             light_d = safe_normalize(light_d)
 
-        if self.opt.use_cubemap:
+        if self.opt.use_cubemap != "none":
 
             # [-1.0,  1.0, -1.0,],
             # [-1.0, -1.0, -1.0,],
@@ -1023,7 +1023,7 @@ class DLMesh(nn.Module):
             map_texture_locations = ["posx.jpg", "negx.jpg", "posy.jpg", "negy.jpg", "posz.jpg", "negz.jpg"]
             cube_map_texture = torch.zeros((1, 6, 256, 256, 3), dtype=torch.float32)
             for i in range(6):
-                cube_map_texture[0, i] = torch.tensor(np.array(Image.open(f"cubemaps/SanFrancisco4/{map_texture_locations[i]}").resize((256, 256))).astype(np.float32) / 255.0)
+                cube_map_texture[0, i] = torch.tensor(np.array(Image.open(f"cubemaps/{self.opt.use_cubemap}/{map_texture_locations[i]}").resize((256, 256))).astype(np.float32) / 255.0)
             cube_map_texture = cube_map_texture.cuda()
 
             pos_clip = torch.bmm(F.pad(pos, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(1, -1, -1),

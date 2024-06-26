@@ -7,12 +7,12 @@ action: "running"
 wandb_mode: "disabled"
 save_mesh: false
 name: "tmp"
-view_count: 100
+view_count: 4
 training:
   debug: false
   accumulate: false
   constraint_latent_weight: 0.0
-  optim: "adam"
+  optim: "adan"
   anneal_tex_reso: false
   rgb_sds: true
   normal_sds: false
@@ -44,7 +44,7 @@ model:
   w: 256
   H: 256
   W: 256
-  use_cubemap: true
+  use_cubemap: "Yokohama3"
   add_fake_movement: false
   vpose: true
   pose_mlp: "pose"
