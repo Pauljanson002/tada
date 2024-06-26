@@ -450,7 +450,7 @@ class ViewDataset(torch.utils.data.Dataset):
         return data
 
     def __getitem__(self, idx):
-        if self.training:
+        if False:
             # random pose on the fly
             if self.full_body:
                 camera_type = "body"

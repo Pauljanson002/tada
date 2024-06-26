@@ -244,14 +244,14 @@ class Trainer(object):
                 "uncond": self.guidance.get_text_embeds([self.negative]),
                 "default": self.guidance.get_text_embeds(
                     [
-                        f"a shot of a {self.text} {self.action} in the {self.context}, full-body"
+                        f"a shot of a {self.text} {self.action} , full-body"
                     ]
                 ),
             }
             self.text_embeds_ref = {
                 "uncond": self.guidance.get_text_embeds([self.negative]),
                 "default": self.guidance.get_text_embeds(
-                    [f"a shot of a {self.text} in the {self.context}, full-body"]
+                    [f"a shot of a {self.text} in the , full-body"]
                 ),
             }
         else:
@@ -267,7 +267,7 @@ class Trainer(object):
                 self.text_embeds["body"] = {
                     d: self.guidance.get_text_embeds(
                         [
-                            f"a shot of {d} view of a {self.text} {self.action} in the {self.context}, full-body"
+                            f"a shot of {d} view of a {self.text} {self.action} , full-body"
                         ]
                     )
                     for d in ["front", "side", "back", "overhead"]
@@ -275,7 +275,7 @@ class Trainer(object):
                 self.text_embeds_ref["body"] = {
                     d: self.guidance.get_text_embeds(
                         [
-                            f"a shot of {d} view of a {self.text} in the {self.context}, full-body"
+                            f"a shot of {d} view of a {self.text} , full-body"
                         ]
                     )
                     for d in ["front", "side", "back", "overhead"]
@@ -284,7 +284,7 @@ class Trainer(object):
                 self.text_embeds["body"] = {
                     d: self.guidance.get_text_embeds(
                         [
-                            f"a shot of {d} view of a {self.text} in the {self.context}, full-body"
+                            f"a shot of {d} view of a {self.text} , full-body"
                         ]
                     )
                     for d in ["front", "side", "back", "overhead"]
