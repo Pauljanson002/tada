@@ -2,11 +2,17 @@
 
 defaults:
   - _self_
+
+hydra:
+  sweeper:
+    params:
+      training.interframe_supervision: 100.0,10.0,1.0,0.0
+
 text: "man"
-action: "running"
-wandb_mode: "disabled"
+action: "punching"
+wandb_mode: "online"
 save_mesh: false
-name: "tmp"
+name: "inter_frame"
 view_count: 100
 training:
   debug: false
@@ -31,7 +37,7 @@ training:
   g1_coeff: 1e-3
   g2_coeff: 1e-3
   q_p: 0.0
-  interframe_supervision: 0.0
+  interframe_supervision: 1.0
 model:
   video: true
   num_frames: 16
@@ -46,7 +52,7 @@ model:
   W: 256
   use_cubemap: true
   add_fake_movement: false
-  vpose: true
+  vpose: false
   pose_mlp: "pose"
   pose_mlp_args:
     tau_scale: 0.0
