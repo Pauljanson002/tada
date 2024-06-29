@@ -1433,11 +1433,12 @@ class SMPLXLayer(SMPLX):
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
+        vertices, joints, vT, jT, v_shaped, v_posed = lbs(shape_components, full_pose, self.v_template,
                                shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
                                self.lbs_weights,
                                pose2rot=False,
+                               custom_out=True
                                )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
@@ -1468,6 +1469,10 @@ class SMPLXLayer(SMPLX):
         # Add the landmarks to the joints
         joints = torch.cat([joints, landmarks], dim=1)
         # Map the joints to the current dataset
+    
+        joints_transform = self.vertex_joint_selector(vT, jT)
+        # Add the landmarks to the joints
+        joints = torch.cat([joints, landmarks], dim=1)
 
         if self.joint_mapper is not None:
             joints = self.joint_mapper(joints=joints, vertices=vertices)
@@ -1485,7 +1490,9 @@ class SMPLXLayer(SMPLX):
                              left_hand_pose=left_hand_pose,
                              right_hand_pose=right_hand_pose,
                              jaw_pose=jaw_pose,
-                             transl=transl,
+                             v_shaped=v_shaped,
+                             v_posed=v_posed,
+                             joints_transform=joints_transform,
                              full_pose=full_pose if return_full_pose else None)
         return output
 
