@@ -231,6 +231,10 @@ class Trainer(object):
             self.opt.use_landmarks = False
 
         self.save_freq = 50
+        
+        if self.opt.interframe_supervision > 0.0:
+            self.start_frame = matrix_to_rotation_6d(axis_angle_to_matrix(torch.load(f"4d/poses/punching_start.pt")["smplx_body_pose"].view(-1, 3))).view(1, -1)
+            self.middle_frame = matrix_to_rotation_6d(axis_angle_to_matrix(torch.load(f"4d/poses/punch_middle.pt")["smplx_body_pose"].view(-1, 3))).view(1, -1)
 
     # calculate the text embeddings.
     # Show : Text embeddings
@@ -449,13 +453,18 @@ class Trainer(object):
                     loss_dict["constraint_latent"] = constraint_loss.item()
 
             if self.model.opt.pose_mlp is not None:
-                encoded_vpose = self.model.body_prior.encode(
-                    matrix_to_axis_angle(
-                        rotation_6d_to_matrix((out["prediction"]+self.model.init_body_pose_6d_set).view(-1, 6))
-                    ).view(self.model.num_frames, -1)
-                ).mean
-                # add quadratic penalty to the latent space
-                loss += self.opt.q_p**2 * encoded_vpose.pow(2).sum()
+                if self.opt.q_p > 0:
+                    encoded_vpose = self.model.body_prior.encode(
+                        matrix_to_axis_angle(
+                            rotation_6d_to_matrix((out["prediction"]+self.model.init_body_pose_6d_set).view(-1, 6))
+                        ).view(self.model.num_frames, -1)
+                    ).mean
+                    # add quadratic penalty to the latent space
+                    loss += self.opt.q_p**2 * encoded_vpose.pow(2).sum()
+                    
+            if self.opt.interframe_supervision > 0.0:
+                loss += F.mse_loss(out["prediction"][0,:].view(-1,6), self.start_frame.view(-1,6)) * self.opt.interframe_supervision
+                loss += F.mse_loss(out["prediction"][self.model.num_frames//2,:].view(-1,6), self.middle_frame.view(-1,6)) * self.opt.interframe_supervision
 
             if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose

@@ -1,3 +1,3 @@
 #! /bin/bash
 
-CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun +experiment=dg_2_after_best
+CUDA_VISIBLE_DEVICES=1 python -m apps.run --multirun +experiment=inter
