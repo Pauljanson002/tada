@@ -23,7 +23,7 @@ from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,
 import nvdiffrast.torch as dr
 from human_body_prior.tools.model_loader import load_model
 from human_body_prior.models.vposer_model import VPoser
-
+from smplx.body_models import SMPLXLayer
 import torchvision
 import pickle
 import math
@@ -140,7 +140,7 @@ class PoseField(nn.Module):
         if self.pose_mlp_args.use_clamp == "tanh":
             output = torch.tanh(output/ self.pose_mlp_args.tanh_scale ) * self.pose_mlp_args.tanh_scale
         elif self.pose_mlp_args.use_clamp == "std":
-            output = output * self.twice_std_dev/2
+            output = output * self.twice_std_dev
         elif self.pose_mlp_args.use_clamp == "maxmin":
             output = torch.clamp(output,self.min_val,self.max_val)
         if self.pose_mlp_args.tau_scale > 0:
@@ -326,28 +326,33 @@ class DLMesh(nn.Module):
             self.mesh = Mesh.load_obj(self.opt.mesh)
             self.mesh.auto_normal()
         else:  # geometry
-            self.body_model = smplx.create(
+            # self.body_model = smplx.create(
+            #     model_path=f"{cwd}/data/smplx/SMPLX_NEUTRAL_2020.npz",
+            #     model_type='smplx',
+            #     create_global_orient=True,
+            #     create_body_pose=True,
+            #     create_betas=True,
+            #     create_left_hand_pose=True,
+            #     create_right_hand_pose=True,
+            #     create_jaw_pose=True,
+            #     create_leye_pose=True,
+            #     create_reye_pose=True,
+            #     create_expression=True,
+            #     create_transl=False,
+            #     use_pca=False,
+            #     use_face_contour=True,
+            #     flat_hand_mean=True,
+            #     num_betas=300,
+            #     num_expression_coeffs=100,
+            #     num_pca_comps=12,
+            #     dtype=torch.float32,
+            #     batch_size=1,
+            # ).to(self.device)
+            self.body_model = SMPLXLayer(
                 model_path=f"{cwd}/data/smplx/SMPLX_NEUTRAL_2020.npz",
-                model_type='smplx',
-                create_global_orient=True,
-                create_body_pose=True,
-                create_betas=True,
-                create_left_hand_pose=True,
-                create_right_hand_pose=True,
-                create_jaw_pose=True,
-                create_leye_pose=True,
-                create_reye_pose=True,
-                create_expression=True,
-                create_transl=False,
-                use_pca=False,
-                use_face_contour=True,
-                flat_hand_mean=True,
-                num_betas=300,
-                num_expression_coeffs=100,
-                num_pca_comps=12,
-                dtype=torch.float32,
-                batch_size=1,
             ).to(self.device)
+            
+
 
             self.smplx_faces = self.body_model.faces.astype(np.int32)
 
@@ -381,6 +386,11 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = np.zeros((self.num_frames, 63))
             elif self.opt.initialize_pose == "running_mean":
                 self.diving_body_pose = pickle.load(open(f"{cwd}/4d/poses/running_mean.pkl","rb"))
+                self.diving_body_pose = np.repeat(
+                    self.diving_body_pose, self.num_frames, axis=0
+                )
+            elif self.opt.initialize_pose == "diving_mean":
+                self.diving_body_pose = pickle.load(open(f"{cwd}/4d/poses/diving_mean.pkl","rb"))
                 self.diving_body_pose = np.repeat(
                     self.diving_body_pose, self.num_frames, axis=0
                 )
@@ -764,7 +774,7 @@ class DLMesh(nn.Module):
                     if self.vpose:
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     else:
-                        body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(prediction.view(-1,21,6))).view(1,-1)
+                        body_pose = rotation_6d_to_matrix(prediction.view(-1,21,6)).view(1,21,3,3)
             # Non pose mlp case
             elif self.opt.use_6d:
                 if self.opt.model_change:
@@ -814,17 +824,17 @@ class DLMesh(nn.Module):
                 left_hand_pose = None
                 right_hand_pose = None
             output = self.body_model(
-                betas=self.betas,
+                # betas=self.betas,
                 body_pose=body_pose,
-                jaw_pose=jaw_pose,
-                global_orient=global_orient,
-                left_hand_pose=left_hand_pose,
-                right_hand_pose=right_hand_pose,
-                left_eye_pose=left_eye_pose,
-                right_eye_pose=right_eye_pose,
+                # jaw_pose=jaw_pose,
+                # global_orient=global_orient,
+                # left_hand_pose=left_hand_pose,
+                # right_hand_pose=right_hand_pose,
+                # left_eye_pose=left_eye_pose,
+                # right_eye_pose=right_eye_pose,
                 # jaw_pose=random.choice(self.rich_params)[None, :3],
                 # jaw_pose=self.rich_params[500:501, :3],
-                expression=self.expression,
+                # expression=self.expression,
                 return_verts=True
             )
             v_cano = output.v_posed[0]

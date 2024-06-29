@@ -3,7 +3,7 @@
 defaults:
   - _self_
 text: "man"
-action: "punching"
+action: "running"
 wandb_mode: "disabled"
 save_mesh: false
 name: "tmp"
@@ -37,7 +37,7 @@ model:
   lock_tex: false
   lock_beta: true
   lock_pose: false
-  initialize_pose: "punching_start"
+  initialize_pose: "running_mean"
   model_change: true
   h: 256
   w: 256

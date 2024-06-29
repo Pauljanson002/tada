@@ -1,9 +1,10 @@
 import torch
-import smplx,trimesh,pyrender
+import smplx, trimesh, pyrender
 import numpy as np
 from lib.rotation_conversions import matrix_to_axis_angle
 from smplx.body_models import SMPLXLayer
 import math
+
 body_model_layer = SMPLXLayer(
     model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz",
     num_betas=300,
