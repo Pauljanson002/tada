@@ -684,7 +684,7 @@ class DLMesh(nn.Module):
                     {'params': self.mlp_texture.parameters(), 'lr': lr},
                 ])
             else:
-                params.append({'params': self.raw_albedo, 'lr': lr})
+                params.append({'params': self.raw_albedo, 'lr': lr * 10 })
 
         if not self.opt.lock_geo:
             if self.opt.geo_mlp:
@@ -807,7 +807,7 @@ class DLMesh(nn.Module):
                     if self.vpose:
                         body_pose = self.body_prior.decode(body_pose_6d.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     else:
-                        body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(body_pose_6d.view(-1,21,6))).view(1,-1)
+                        body_pose = rotation_6d_to_matrix(body_pose_6d.view(-1,21,6)).view(-1,21,3,3)
                     global_orient = self.global_orient
                     jaw_pose = None
                     left_eye_pose = None
