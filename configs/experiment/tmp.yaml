@@ -3,7 +3,7 @@
 defaults:
   - _self_
 text: "man"
-action: "running"
+action: "right hand jabbing"
 wandb_mode: "disabled"
 save_mesh: false
 name: "tmp"
@@ -17,7 +17,7 @@ training:
   rgb_sds: true
   normal_sds: false
   mean_sds: false
-  regularize_coeff: 0.0005
+  regularize_coeff: 1.0
   iters: 10000
   scheduler: "none"
   lr: 0.0005
@@ -29,16 +29,16 @@ training:
   use_3d_landmarks: false
   dds: false
   g1_coeff: 1e-3
-  g2_coeff: 1e-3
+  g2_coeff: 5e-3
   q_p: 0.0
-  interframe_supervision: 0.0
+  interframe_supervision: 1000
 model:
   video: true
-  num_frames: 16
+  num_frames: 5
   lock_tex: false
   lock_beta: true
   lock_pose: false
-  initialize_pose: "running_mean"
+  initialize_pose: "right_hand_jab"
   model_change: true
   h: 256
   w: 256
@@ -46,7 +46,7 @@ model:
   W: 256
   use_cubemap: "Yokohama3"
   add_fake_movement: false
-  vpose: true
+  vpose: false
   pose_mlp: "pose"
   pose_mlp_args:
     tau_scale: 0.0

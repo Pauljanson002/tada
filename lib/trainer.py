@@ -231,10 +231,18 @@ class Trainer(object):
             self.opt.use_landmarks = False
 
         self.save_freq = 50
-        
+
         if self.opt.interframe_supervision > 0.0:
-            self.start_frame = matrix_to_rotation_6d(axis_angle_to_matrix(torch.load(f"4d/poses/punching_start.pt")["smplx_body_pose"].view(-1, 3))).view(1, -1)
-            self.middle_frame = matrix_to_rotation_6d(axis_angle_to_matrix(torch.load(f"4d/poses/punch_middle.pt")["smplx_body_pose"].view(-1, 3))).view(1, -1)
+            if action != "right hand jabbing":
+                self.interframe = torch.from_numpy(pickle.load(open(f"4d/poses/{action}.pkl", "rb"))["body_pose"]).float().to("cuda")
+                self.start_frame = matrix_to_rotation_6d(axis_angle_to_matrix(self.interframe[0].view(-1, 3))).view(1, -1)
+                self.middle_frame = matrix_to_rotation_6d(axis_angle_to_matrix(self.interframe[self.interframe.shape[0]//2].view(-1, 3))).view(1, -1)
+                self.end_frame = matrix_to_rotation_6d(axis_angle_to_matrix(self.interframe[0].view(-1, 3))).view(1, -1)
+            else:
+                self.interframe = torch.from_numpy(np.load("4d/poses/right_hand_jab.npz")["poses"])[:,3:66].float().to("cuda")
+                self.start_frame = matrix_to_rotation_6d(axis_angle_to_matrix(self.interframe[0].view(-1, 3))).view(1, -1)
+                self.middle_frame = matrix_to_rotation_6d(axis_angle_to_matrix(self.interframe[100].view(-1, 3))).view(1, -1)
+                self.end_frame = matrix_to_rotation_6d(axis_angle_to_matrix(self.interframe[0].view(-1, 3))).view(1, -1)            
 
     # calculate the text embeddings.
     # Show : Text embeddings
@@ -461,10 +469,12 @@ class Trainer(object):
                     ).mean
                     # add quadratic penalty to the latent space
                     loss += self.opt.q_p**2 * encoded_vpose.pow(2).sum()
-                    
+
             if self.opt.interframe_supervision > 0.0:
-                loss += F.mse_loss(out["prediction"][0,:].view(-1,6), self.start_frame.view(-1,6)) * self.opt.interframe_supervision
-                loss += F.mse_loss(out["prediction"][self.model.num_frames//2,:].view(-1,6), self.middle_frame.view(-1,6)) * self.opt.interframe_supervision
+                interframe_loss = F.mse_loss(out["prediction"][0,:].view(-1,6), self.start_frame.view(-1,6)) * self.opt.interframe_supervision
+                interframe_loss += F.mse_loss(out["prediction"][self.model.num_frames//2,:].view(-1,6), self.middle_frame.view(-1,6)) * self.opt.interframe_supervision
+                interframe_loss += F.mse_loss(out["prediction"][-1,:].view(-1,6), self.end_frame.view(-1,6)) * self.opt.interframe_supervision
+                loss+= interframe_loss
 
             if self.opt.use_ground_truth:
                 # L2 loss between the body pose 6d and the running pose
