@@ -72,7 +72,6 @@ class ZeroScope(nn.Module):
             self.pipe.enable_sequential_cpu_offload()
 
         self.vae = self.pipe.vae.eval()
-        del self.vae.decoder
         self.tokenizer = self.pipe.tokenizer
         self.text_encoder = self.pipe.text_encoder
         self.unet = self.pipe.unet.eval()
@@ -90,8 +89,8 @@ class ZeroScope(nn.Module):
 
         # TODO SJC (DDPM scheudler)
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
-        self.min_step = int(self.num_train_timesteps * t_range[0])
-        self.max_step = int(self.num_train_timesteps * t_range[1])
+        self.min_step = int(self.num_train_timesteps * 0.01)
+        self.max_step = int(self.num_train_timesteps * 0.20)
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
@@ -174,11 +173,34 @@ class ZeroScope(nn.Module):
 
         if False:
             with torch.no_grad():
-                grad_visual = self.decode_latents(grad)
-                grad_visual = grad_visual.cpu()[0].permute(1,2,3,0)
-                grad_visual = (grad_visual * 255).to(torch.uint8)
-                torchvision.io.write_video("grad_visual.mp4", grad_visual, 5)
-                breakpoint()
+                # visualize predicted denoised image
+                # The following block of code is equivalent to `predict_start_from_noise`...
+                # see zero123_utils.py's version for a simpler implementation.
+                alphas = self.scheduler.alphas.to(latents)
+                total_timesteps = self.max_step - self.min_step + 1
+                index = total_timesteps - t.to(latents.device) - 1
+                b = len(noise_pred)
+                a_t = alphas[index].reshape(b, 1, 1, 1).to(self.device)
+                sqrt_one_minus_alphas = torch.sqrt(1 - alphas)
+                sqrt_one_minus_at = (
+                    sqrt_one_minus_alphas[index].reshape((b, 1, 1, 1)).to(self.device)
+                )
+                pred_x0 = (
+                    latents_noisy - sqrt_one_minus_at * noise_pred
+                ) / a_t.sqrt()  # current prediction for x_0
+                result_hopefully_less_noisy_image = self.decode_latents(
+                    pred_x0.to(latents.type(self.precision_t))
+                )
+                torchvision.io.write_video(
+                    "tmp.mp4",
+                    (result_hopefully_less_noisy_image * 255)
+                    .int()
+                    .permute(0, 2, 3, 4, 1)
+                    .cpu()
+                    .view(5, 320, 576, 3),
+                    fps=5,
+                )
+                # breakpoint()
 
         # TODO: Do we need gradient clipping ?
         # if grad clip

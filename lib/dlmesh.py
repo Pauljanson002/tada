@@ -399,6 +399,9 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = self.diving_body_pose.repeat(
                     [self.num_frames, 1]
                 )
+            elif self.opt.initialize_pose == "right_hand_jab":
+                self.diving_body_pose = np.load(f"{cwd}/4d/poses/right_hand_jab.npz")["poses"][:1,3:66]
+                self.diving_body_pose = np.repeat(self.diving_body_pose, self.num_frames, axis=0)
 
             if not isinstance(self.diving_body_pose, torch.Tensor):
                 self.diving_body_pose = torch.as_tensor(self.diving_body_pose).float().to(self.device)
