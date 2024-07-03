@@ -23,7 +23,7 @@ from lib.rotation_conversions import rotation_6d_to_matrix,matrix_to_axis_angle,
 import nvdiffrast.torch as dr
 from human_body_prior.tools.model_loader import load_model
 from human_body_prior.models.vposer_model import VPoser
-
+from smplx.body_models import SMPLXLayer
 import torchvision
 import pickle
 import math
@@ -103,7 +103,7 @@ class PoseField(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.create_embedding_fn()
         self.pose_mlp_args = pose_mlp_args
-        self.twice_std_dev = torch.load("4d/poses/running_std_dev.pt").cuda().view(126)
+        self.twice_std_dev = torch.load(f"4d/poses/{pose_mlp_args.action}_std_dev.pt").cuda().view(330)
         self.max_val = torch.load("4d/poses/running_max.pt").float().cuda().view(126)
         self.min_val = torch.load("4d/poses/running_min.pt").float().cuda().view(126)
 
@@ -325,29 +325,31 @@ class DLMesh(nn.Module):
             self.mesh = Mesh.load_obj(self.opt.mesh)
             self.mesh.auto_normal()
         else:  # geometry
-            self.body_model = smplx.create(
+            # self.body_model = smplx.create(
+            #     model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz",
+            #     model_type='smplx',
+            #     create_global_orient=True,
+            #     create_body_pose=True,
+            #     create_betas=True,
+            #     create_left_hand_pose=True,
+            #     create_right_hand_pose=True,
+            #     create_jaw_pose=True,
+            #     create_leye_pose=True,
+            #     create_reye_pose=True,
+            #     create_expression=True,
+            #     create_transl=False,
+            #     use_pca=False,
+            #     use_face_contour=True,
+            #     flat_hand_mean=True,
+            #     num_betas=300,
+            #     num_expression_coeffs=100,
+            #     num_pca_comps=12,
+            #     dtype=torch.float32,
+            #     batch_size=1,
+            # ).to(self.device)
+            self.body_model = SMPLXLayer(
                 model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz",
-                model_type='smplx',
-                create_global_orient=True,
-                create_body_pose=True,
-                create_betas=True,
-                create_left_hand_pose=True,
-                create_right_hand_pose=True,
-                create_jaw_pose=True,
-                create_leye_pose=True,
-                create_reye_pose=True,
-                create_expression=True,
-                create_transl=False,
-                use_pca=False,
-                use_face_contour=True,
-                flat_hand_mean=True,
-                num_betas=300,
-                num_expression_coeffs=100,
-                num_pca_comps=12,
-                dtype=torch.float32,
-                batch_size=1,
-            ).to(self.device)
-
+            )
             self.smplx_faces = self.body_model.faces.astype(np.int32)
 
             if self.vpose:
@@ -379,8 +381,13 @@ class DLMesh(nn.Module):
                 self.diving_body_pose = np.repeat(self.diving_body_pose, self.num_frames, axis=0)
             elif self.opt.initialize_pose == "zero":
                 self.diving_body_pose = np.zeros((self.num_frames, 63))
-            elif self.opt.initialize_pose == "running_mean":
-                self.diving_body_pose = pickle.load(open("4d/poses/running_mean.pkl","rb"))
+            elif self.opt.initialize_pose == "running_mean" or self.opt.initialize_pose == "punching_mean":
+                self.diving_body_pose = pickle.load(open(f"4d/poses/{self.opt.initialize_pose}.pkl","rb"))
+                self.diving_body_pose = np.repeat(
+                    self.diving_body_pose, self.num_frames, axis=0
+                )
+            else:
+                self.diving_body_pose = pickle.load(open(f"4d/poses/{self.opt.action}_mean.pkl","rb"))
                 self.diving_body_pose = np.repeat(
                     self.diving_body_pose, self.num_frames, axis=0
                 )
@@ -469,7 +476,7 @@ class DLMesh(nn.Module):
                             self.pose_mlp = PoseField(8, [32,32], 32,self.num_frames,self.opt.pose_mlp_args)
                         else:
                             self.pose_mlp = PoseField(
-                                8, [32, 32], 126, self.num_frames, self.opt.pose_mlp_args
+                                8, [32, 32], 330, self.num_frames, self.opt.pose_mlp_args
                             )
                     elif self.opt.pose_mlp == "kickstart":
                         self.pose_mlp = PoseField(
@@ -511,7 +518,7 @@ class DLMesh(nn.Module):
             if self.opt.tex_mlp:
                 # self.encoder_tex, self.in_dim = get_encoder('hashgrid', interpolation='smoothstep')
                 # self.tex_net = MLP(self.in_dim, 3, 32, 2)
-                from .mlptexture import MLPTexture3D
+                from .mlptexture import MLPTexture3D 
                 self.mlp_texture = MLPTexture3D()
             else:
                 if False:
@@ -523,12 +530,17 @@ class DLMesh(nn.Module):
                     albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
                     albedo_image = albedo_image.astype(np.float32) / 255.0
                     self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
+                    self.raw_albedo_copy = (
+                        self.raw_albedo.clone().detach().requires_grad_(False)
+                    )
                     self.raw_albedo = nn.Parameter(self.raw_albedo)
+
         else:
             albedo_image = cv2.imread("data/mesh_albedo.png")
             albedo_image = cv2.cvtColor(albedo_image, cv2.COLOR_BGR2RGB)
             albedo_image = albedo_image.astype(np.float32) / 255.0
             self.raw_albedo = torch.as_tensor(albedo_image, dtype=torch.float32, device=self.device)
+            self.raw_albedo_copy = self.raw_albedo.clone().detach().requires_grad_(False)
 
         # Geometry parameters
         if not self.opt.lock_geo:
@@ -713,7 +725,7 @@ class DLMesh(nn.Module):
     def get_mesh(self, is_train,frame_id=0):
         # os.makedirs("./results/pipline/obj/", exist_ok=True)
         video = self.opt.video
-        global_orient = self.global_orient
+        global_orient = None
         jaw_pose = None
         left_eye_pose = None
         right_eye_pose = None
@@ -756,7 +768,10 @@ class DLMesh(nn.Module):
                     if self.vpose:
                         body_pose = self.body_prior.decode(prediction.unsqueeze(0))['pose_body'].contiguous().view(1,-1)
                     else:
-                        body_pose = matrix_to_axis_angle(rotation_6d_to_matrix(prediction.view(-1,21,6))).view(1,-1)
+                        full_pose = rotation_6d_to_matrix(prediction.view(-1,55,6)).view(-1,55,3,3)
+                        body_pose = full_pose[:,1:22,:,:]
+                        left_hand_pose = full_pose[:,-30:-15,:,:]
+                        right_hand_pose = full_pose[:,-15:,:,:]
             # Non pose mlp case
             elif self.opt.use_6d:
                 if self.opt.model_change:
@@ -806,17 +821,17 @@ class DLMesh(nn.Module):
                 left_hand_pose = None
                 right_hand_pose = None
             output = self.body_model(
-                betas=self.betas,
+                # betas=self.betas,
                 body_pose=body_pose,
-                jaw_pose=jaw_pose,
-                global_orient=global_orient,
+                # jaw_pose=jaw_pose,
+                # global_orient=global_orient,
                 left_hand_pose=left_hand_pose,
                 right_hand_pose=right_hand_pose,
-                left_eye_pose=left_eye_pose,
-                right_eye_pose=right_eye_pose,
+                # left_eye_pose=left_eye_pose,
+                # right_eye_pose=right_eye_pose,
                 # jaw_pose=random.choice(self.rich_params)[None, :3],
                 # jaw_pose=self.rich_params[500:501, :3],
-                expression=self.expression,
+                # expression=self.expression,
                 return_verts=True
             )
             v_cano = output.v_posed[0]
@@ -867,7 +882,10 @@ class DLMesh(nn.Module):
                 mesh = Mesh(vertices,torch.from_numpy(faces).cuda(),vt=uvs,ft=indices)
             mesh.auto_normal()
             # if not self.opt.lock_tex and not self.opt.tex_mlp:
-            mesh.set_albedo(self.raw_albedo)
+            if is_train:
+                mesh.set_albedo(self.raw_albedo)
+            else:
+                mesh.set_albedo(self.raw_albedo_copy)
         else:
             mesh = Mesh(base=self.mesh)
             mesh.set_albedo(self.raw_albedo)

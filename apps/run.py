@@ -30,6 +30,7 @@ def main(cfg):
     else:
         cfg.training.workspace  = hydra_singleton.run.dir
     
+
     # if debug set the logger to verbos in hydra
     # save config to workspace
     if False: #disabling this for now

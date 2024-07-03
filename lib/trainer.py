@@ -469,7 +469,7 @@ class Trainer(object):
                         self.running_body_pose,
                     )
                 else:
-                    if self.model.opt.pose_mlp != "none":
+                    if self.model.opt.pose_mlp != "none" and False:
                         dummy_loss = F.mse_loss(
                             out["prediction"].view(-1, 6),
                             self.running_body_pose.view(-1, 6),

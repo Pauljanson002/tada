@@ -502,7 +502,11 @@ class ViewDataset(torch.utils.data.Dataset):
             # circle pose
             radius = 1.3
             fov = 50
-            phis = (idx / self.size) * 360
+            if self.training:
+                new_rand_id = random.randint(0, self.size - 1)
+                phis = (new_rand_id / self.size) * 360
+            else:
+                phis = (idx / self.size) * 360
             thetas = 75
             poses, dirs = circle_poses(
                 self.device,
