@@ -12,7 +12,7 @@ training:
   debug: false
   accumulate: false
   constraint_latent_weight: 0.0
-  optim: "adan"
+  optim: "adam"
   anneal_tex_reso: false
   rgb_sds: true
   normal_sds: false
@@ -20,7 +20,7 @@ training:
   regularize_coeff: 1.0
   iters: 10000
   scheduler: "none"
-  lr: 0.0005
+  lr: 0.5
   guidance_scale: 100
   set_global_time_step: false
   use_ground_truth: false
@@ -28,10 +28,10 @@ training:
   landmarks_count: 20
   use_3d_landmarks: false
   dds: false
-  g1_coeff: 1e-3
-  g2_coeff: 5e-3
+  g1_coeff: 0.01
+  g2_coeff: 1.0
   q_p: 0.0
-  interframe_supervision: 1000
+  interframe_supervision: 0.0
 model:
   video: true
   num_frames: 5

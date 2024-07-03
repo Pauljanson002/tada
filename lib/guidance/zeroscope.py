@@ -345,7 +345,7 @@ class ZeroScope(nn.Module):
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         image = self.vae.decode(latents).sample
-        image = (image * 2 + 0.5).clamp(0, 1)
+        image = (image / 2 + 0.5).clamp(0, 1)
         video = (
             image[None, :]
             .reshape(
