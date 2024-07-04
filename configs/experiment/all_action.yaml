@@ -2,11 +2,19 @@
 
 defaults:
   - _self_
+
+
+hydra:
+  sweeper:
+    params:
+      training.lr: 0.0005,0.0001,0.001
+      action: running,walking,crouching,swinging arms,cartwheeling
+
 text: "man"
-action: "cartwheeling"
+action: "running"
 wandb_mode: "disabled"
 save_mesh: false
-name: "tmp"
+name: "all_action"
 view_count: 100
 training:
   debug: false
