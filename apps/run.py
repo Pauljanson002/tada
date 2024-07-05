@@ -13,7 +13,6 @@ from omegaconf import OmegaConf
 torch.autograd.set_detect_anomaly(False)
 
 
-
 @hydra.main(version_base=None,config_path="../configs", config_name="tada_wo_dpt.yaml")
 def main(cfg):
     # cfg = argparse.Namespace(**OmegaConf.to_container(cfg))
@@ -29,7 +28,6 @@ def main(cfg):
             cfg.training.workspace = os.path.join(hydra_singleton.sweep.dir,hydra_singleton.job.id)
     else:
         cfg.training.workspace  = hydra_singleton.run.dir
-    
 
     # if debug set the logger to verbos in hydra
     # save config to workspace
@@ -51,11 +49,13 @@ def main(cfg):
 
     def configure_guidance():
         opt = cfg.guidance
-        
+
         if opt.name == "both":
             from lib.guidance.sd import StableDiffusion
             from lib.guidance.zeroscope import ZeroScope
-            return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+            from lib.guidance.video_crafter import VideoCrafter
+            # return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+            return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), VideoCrafter(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
         elif opt.name == 'sd':
             from lib.guidance.sd import StableDiffusion
             return StableDiffusion(device, cfg.fp16, opt.vram_O, opt.sd_version,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type)
@@ -74,6 +74,9 @@ def main(cfg):
         elif opt.name == "modelscope":
             from lib.guidance.modelscope import ModelScope
             return ModelScope(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+        elif opt.name == "videocrafter":
+            from lib.guidance.video_crafter import VideoCrafter
+            return VideoCrafter(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
         else:
             from lib.guidance.clip import CLIP
             return CLIP(device)
@@ -132,7 +135,6 @@ def main(cfg):
             guidance = configure_guidance()
         wandb.init(project="tada",name=cfg.name,config=OmegaConf.to_container(cfg),tags=["phase_1"],mode=cfg.wandb_mode,reinit=True,group="_".join(cfg.name.split('_')[:-1]))
 
-
         trainer = Trainer(cfg.name,
                         text=cfg.text,
                         action=cfg.action,
@@ -154,8 +156,7 @@ def main(cfg):
         valid_loader = build_dataloader('val')
         max_epoch = np.ceil(cfg.training.iters / (len(train_loader) * train_loader.batch_size)).astype(np.int32)
         print(f"max_epoch:{max_epoch}")
-        
-        
+
         trainer.train(train_loader, valid_loader, max_epoch)
 
         # test

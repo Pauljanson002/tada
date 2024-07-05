@@ -3,7 +3,7 @@
 defaults:
   - _self_
 text: "man"
-action: "cartwheeling"
+action: "swinging arms"
 wandb_mode: "disabled"
 save_mesh: false
 name: "tmp"
@@ -32,7 +32,7 @@ training:
   g2_coeff: 1.0
 model:
   video: true
-  num_frames: 8
+  num_frames: 2
   lock_tex: false
   lock_beta: true
   lock_pose: false
