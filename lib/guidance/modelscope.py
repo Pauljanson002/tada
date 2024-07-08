@@ -117,8 +117,7 @@ class ModelScope(nn.Module):
 
     def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False,**kwargs): # pred_rgbt: [F, 3, H, W]
         if rgb_as_latents:
-            latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
-            latents = latents * 2 - 1
+            latents = pred_rgbt
         else:
             pred_rgbt = F.interpolate(pred_rgbt, (256, 256), mode='bilinear', align_corners=False)
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]

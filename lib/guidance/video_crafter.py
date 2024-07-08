@@ -88,8 +88,8 @@ class VideoCrafter(nn.Module):
         self.alphas = self.model.alphas_cumprod
         print("[WARNING] DDS is not implemented for Videocrafter 2")
         print("[INFO] videocrafter 2 loaded")
-        self.fps = 28
-        self.motion_amp_scale = 1.0
+        self.fps = 8
+        self.motion_amp_scale = 2.0
 
     @torch.no_grad()
     def get_text_embeds(self, prompt):
@@ -132,7 +132,7 @@ class VideoCrafter(nn.Module):
         latents,
         text_embeddings,
         t,
-        pred_rgb_512,
+        guidance_scale=100,
     ):
         # predict the noise residual with unet, NO grad!
         with torch.no_grad():
@@ -149,12 +149,12 @@ class VideoCrafter(nn.Module):
                 torch.cat([t] * 2),
                 cond,
                 x0=None,
-                temporal_length=16,
+                temporal_length=latents.shape[2],
             )
 
         # perform guidance (high scale from paper!)
-        noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
-        noise_pred = noise_pred_text + 100 * (
+        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+        noise_pred = noise_pred_text + guidance_scale * (
             noise_pred_text - noise_pred_uncond
         )
 
@@ -214,7 +214,7 @@ class VideoCrafter(nn.Module):
 
         # predict the noise residual
 
-        grad = self.compute_grad_sds(latents, text_embeddings, t, pred_rgbt)
+        grad = self.compute_grad_sds(latents, text_embeddings, t, guidance_scale)
 
         if False:
             with torch.no_grad():
@@ -377,28 +377,8 @@ class VideoCrafter(nn.Module):
     @torch.cuda.amp.autocast(enabled=True)
     def decode_latents(self, latents):
         # TODO: Make decoding align with previous version
-        latents = 1 / self.vae.config.scaling_factor * latents
-
-        batch_size, channels, num_frames, height, width = latents.shape
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(
-            batch_size * num_frames, channels, height, width
-        )
-
-        image = self.vae.decode(latents).sample
-        image = (image * 2 + 0.5).clamp(0, 1)
-        video = (
-            image[None, :]
-            .reshape(
-                (
-                    batch_size,
-                    num_frames,
-                    -1,
-                )
-                + image.shape[2:]
-            )
-            .permute(0, 2, 1, 3, 4)
-        )
-
+        video = self.model.decode_first_stage(latents)
+        video = (video * 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         return video
 

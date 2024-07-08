@@ -119,7 +119,7 @@ class ZeroScope(nn.Module):
         if rgb_as_latents:
             # latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
             latents = pred_rgbt
-            latents = latents * 2 - 1
+            # latents = latents * 2 - 1
         else:
             pred_rgbt = F.interpolate(pred_rgbt, (320, 576), mode='bilinear', align_corners=False)
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
