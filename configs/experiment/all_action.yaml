@@ -7,8 +7,8 @@ defaults:
 hydra:
   sweeper:
     params:
-      training.lr: 0.0005,0.0001,0.001
-      action: running,walking,crouching,swinging arms,cartwheeling
+      training.lr: 0.0005
+      action: walking
 
 text: "man"
 action: "running"
@@ -40,7 +40,7 @@ training:
   g2_coeff: 1.0
 model:
   video: true
-  num_frames: 5
+  num_frames: 8
   lock_tex: false
   lock_beta: true
   lock_pose: false
