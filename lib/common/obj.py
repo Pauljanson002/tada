@@ -221,7 +221,7 @@ class Mesh():
             vmapping, ft_np, vt_np = atlas[0]  # [N], [M, 3], [N, 2]
 
         # save to cache
-        # np.savez(cache_path, vt=vt_np, ft=ft_np)
+        np.savez(cache_path, vt=vt_np, ft=ft_np)
         vt = torch.from_numpy(vt_np.astype(np.float32)).to(self.device)
         ft = torch.from_numpy(ft_np.astype(np.int32)).to(self.device)
 
