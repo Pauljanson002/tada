@@ -3,8 +3,10 @@ import random
 import torch
 import torch.nn.functional as F
 import nvdiffrast.torch as dr
-from . import utils
+from lib.common import utils
 from lib.common.obj import compute_normal
+
+
 
 
 class Renderer(torch.nn.Module):
@@ -136,3 +138,8 @@ class Renderer(torch.nn.Module):
             mesh.albedo.unsqueeze(0), texc, uv_da=texc_db, filter_mode='linear-mipmap-linear')  # [B, H, W, 3]
         albedo = torch.where(rast[..., 3:] > 0, albedo, torch.tensor(0).to(albedo.device))  # remove background
         return albedo
+
+
+if __name__ == "__main__":
+    print('test renderer')
+    renderer = Renderer()

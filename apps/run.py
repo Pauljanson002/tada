@@ -50,12 +50,20 @@ def main(cfg):
     def configure_guidance():
         opt = cfg.guidance
 
-        if opt.name == "both":
+        if "both" in opt.name :
             from lib.guidance.sd import StableDiffusion
             from lib.guidance.zeroscope import ZeroScope
             from lib.guidance.video_crafter import VideoCrafter
+            from lib.guidance.modelscope import ModelScope
             # return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
-            return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), VideoCrafter(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+            if opt.name == "both_vc":
+                return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), VideoCrafter(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+            elif opt.name == "both_ms":
+                return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ModelScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+            elif opt.name == "both_zs":
+                return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+            else:
+                raise NotImplementedError()
         elif opt.name == 'sd':
             from lib.guidance.sd import StableDiffusion
             return StableDiffusion(device, cfg.fp16, opt.vram_O, opt.sd_version,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type)

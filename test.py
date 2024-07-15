@@ -36,7 +36,7 @@ class MyClass:
         vertices = model_output.vertices[0].cpu().detach().numpy()
         faces = self.body_model.faces
         # simplification
-        vertices, faces = fast_simplification.simplify(vertices, faces, 0.9)
+        # vertices, faces = fast_simplification.simplify(vertices, faces, 0.9)
         mesh_trimesh = trimesh.Trimesh(vertices=vertices, faces=faces,)
         vmapping , indices , uvs =  xatlas.parametrize(mesh_trimesh.vertices, mesh_trimesh.faces)
         uvs = torch.tensor(uvs).to(self.device)
