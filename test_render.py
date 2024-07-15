@@ -45,6 +45,7 @@ class Renderer(torch.nn.Module):
         self,
         mesh,
         mvp,
+        texture=None,
         light_d=None,
     ):
         B = mvp.shape[0]
@@ -68,7 +69,7 @@ class Renderer(torch.nn.Module):
         )  # [B, H, W, 1]
         depth = rast[..., [2]]  # [B, H, W]
 
-        col = torch.ones_like(v_clip)
+        col = texture
         
         color, _ = dr.interpolate(col, rast, mesh.f)
         vn, _ = compute_normal(v_clip[0, :, :3], mesh.f)
@@ -174,7 +175,7 @@ def safe_normalize(x, eps=1e-20):
 
 
 if __name__ == "__main__":
-    
+
     with open("4d/poses/running_mean.pkl","rb") as f:
         running_pose = pickle.load(f)
         running_pose = torch.tensor(running_pose).cuda().float()
@@ -183,10 +184,12 @@ if __name__ == "__main__":
     smplx_layer = SMPLXLayer(model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz").cuda()
     smplx_params = torch.nn.Parameter(running_pose[:,1:22,:,:], requires_grad=True)
     # smplx_params[15]["lr"] = 0.01
-    optimizer = torch.optim.AdamW([smplx_params],lr=0.001)
+    dummy_smplx_output = smplx_layer()
+    texture = torch.nn.Parameter(torch.ones_like(dummy_smplx_output.vertices[0]).cuda(),requires_grad=True)
+    optimizer = torch.optim.AdamW([smplx_params,texture],lr=0.001)
     dataset = ViewDataset(CameraConfig, "cuda", type="test", size=4)
     faces_tensor = torch.from_numpy(smplx_layer.faces.astype("int32")).int().cuda()
-    data = dataset[1]
+    data = dataset[0]
 
     guidance = StableDiffusion("cuda", False, False)
 
@@ -209,7 +212,7 @@ if __name__ == "__main__":
         vertices = normalize_vert(smplx_output.vertices[0])
         mesh = Mesh(vertices,faces_tensor)
 
-        alpha,color = renderer(mesh, data["mvp"][None,...],light_d=light_d)
+        alpha,color = renderer(mesh, data["mvp"][None,...],light_d=light_d,texture=texture)
 
         # Rendering ended
 
@@ -229,5 +232,5 @@ if __name__ == "__main__":
 
         loss.backward()
         optimizer.step()
-
+        breakpoint()
     print("Test passed")
