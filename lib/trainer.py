@@ -110,7 +110,7 @@ class Trainer(object):
         # self.guidance = torch.nn.DataParallel(self.guidance, device_ids=[0, 1, 2, 3]).module
         # text prompt
 
-        self.running_body_pose = pickle.load(open("4d/poses/running.pkl", "rb"))[
+        self.running_body_pose = pickle.load(open("archive/4d/poses/running.pkl", "rb"))[
             "body_pose"
         ]
         self.running_body_pose = (
@@ -121,12 +121,7 @@ class Trainer(object):
             axis_angle_to_matrix(self.running_body_pose.view(-1, 3))
         ).view(self.model.opt.num_frames, -1)
 
-        self.landmarks = []
-        for i in range(4):
-            ldnmrk = torch.load(f"smplx_joints_{i}.pt").to("cuda")
-            ldnmrk.requires_grad = False
-            self.landmarks.append(ldnmrk)
-        self.landmarks_3d = torch.load("smplx_3d_joints.pt").to("cuda")
+
         self.text_embeds = None
         if self.guidance is not None:
             for p in self.guidance.parameters():

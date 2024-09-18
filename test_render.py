@@ -57,6 +57,7 @@ class Renderer(torch.nn.Module):
         ).float()  # [B, N, 4]
         # translate the by 1.0
         res = (512,512)
+        breakpoint()
         rast, rast_db = dr.rasterize(self.glctx, v_clip, mesh.f, res)
 
         ################################################################################
@@ -176,10 +177,11 @@ def safe_normalize(x, eps=1e-20):
 
 if __name__ == "__main__":
 
-    with open("4d/poses/running_mean.pkl","rb") as f:
+    with open("archive/4d/poses/running_mean.pkl","rb") as f:
         running_pose = pickle.load(f)
         running_pose = torch.tensor(running_pose).cuda().float()
-        running_pose = rc.axis_angle_to_matrix(running_pose.view(-1,3)).view(1, 55, 3, 3)
+        running_pose = rc.axis_angle_to_matrix(running_pose.view(-1,3)).view(1, 21, 3, 3)
+        running_pose = torch.randn(1, 55, 3, 3).cuda()
     renderer = Renderer()
     smplx_layer = SMPLXLayer(model_path="./data/smplx/SMPLX_NEUTRAL_2020.npz").cuda()
     smplx_params = torch.nn.Parameter(running_pose[:,1:22,:,:], requires_grad=True)

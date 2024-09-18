@@ -1,7 +1,7 @@
 defaults:
   - _self_
 name: 'default'
-seed: 2222
+seed: 0
 view_count: 4
 stage: "geo"
 fp16: True
@@ -23,13 +23,13 @@ training:
   albedo_iters: 10000
   lr: 0.01
   min_lr: 1e-4
-  ckpt: latest
+  ckpt: True
   anneal_tex_reso: False
   optim: 'adam'
   scheduler: False
   train_face_ratio: 0.0
   eval_interval: 1
-  workspace: "/data/tada"
+  workspace: outputs/${name}_${seed}
   perpneg: False
   geo_loss: []
   sample_jaw_pose: False
@@ -122,7 +122,7 @@ smpl:
 wandb_mode: "disabled"
 hydra:
   run:
-    dir: outputs/${name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${name}_${seed}
   sweep:
-    dir: multirun/${name}/${now:%Y-%m-%d_%H-%M-%S}
-    subdir: ${hydra.job.num}
+    dir: outputs/${name}_${seed}
+    subdir: outputs/${name}_${seed}

@@ -3,7 +3,7 @@
 defaults:
   - _self_
 text: "man"
-action: "swinging arms"
+action: "punching"
 wandb_mode: "disabled"
 save_mesh: false
 name: "tmp"
@@ -56,5 +56,5 @@ model:
   action: ${action}
 fp16: true
 guidance:
-  name: "both"
+  name: "cog"
   loss_type: "standard"
