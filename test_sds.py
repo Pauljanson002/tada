@@ -12,10 +12,7 @@ import torchvision
 
 
 actions = [
-    "running",
-    "walking",
-    "punching",
-    "swinging arms"
+    "cartwheeling",
 ]
 
 gudiances_types = ["videocrafter", "zeroscope", "modelscope"]
