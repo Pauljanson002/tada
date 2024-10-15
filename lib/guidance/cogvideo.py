@@ -41,7 +41,7 @@ class CogVideo(nn.Module):
             model_key = "THUDM/CogVideoX-2b"
             self.pipe = CogVideoXPipeline.from_pretrained(
                 model_key, torch_dtype=self.precision_t, local_files_only=True
-            ).to(self.device)
+            )
             self.scheduler = CogVideoXDPMScheduler.from_config(
                 self.pipe.scheduler.config, timestep_spacing="trailing"
             )
@@ -49,7 +49,7 @@ class CogVideo(nn.Module):
             model_key = "THUDM/CogVideoX-2b"
             self.pipe = CogVideoXPipeline.from_pretrained(
                 model_key, torch_dtype=self.precision_t,
-            ).to(self.device)
+            ).to("cuda")
             self.scheduler = CogVideoXDPMScheduler.from_config(
                 self.pipe.scheduler.config, timestep_spacing="trailing"
             )
@@ -64,7 +64,7 @@ class CogVideo(nn.Module):
         self.vae = self.pipe.vae.eval()
         self.tokenizer = self.pipe.tokenizer
         self.text_encoder = self.pipe.text_encoder
-        self.unet = self.pipe.unet.eval()
+        self.transformer = self.pipe.transformer.eval()
 
         for p in self.vae.parameters():
             p.requires_grad = False
@@ -104,7 +104,7 @@ class CogVideo(nn.Module):
             latents = pred_rgbt
         else:
             pred_rgbt = F.interpolate(
-                pred_rgbt, (320, 576), mode="bilinear", align_corners=False
+                pred_rgbt, (256, 256), mode="bilinear", align_corners=False
             )
             pred_rgbt = pred_rgbt.permute(1, 0, 2, 3)[None]
             latents = self.encode_imgs(pred_rgbt)
@@ -127,13 +127,13 @@ class CogVideo(nn.Module):
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
             with torch.autocast(device_type="cuda", dtype=self.precision_t):
-                noise_pred = self.unet(
-                    latent_model_input, tt, encoder_hidden_states=text_embeddings
+                noise_pred = self.transformer(
+                    hidden_states=latent_model_input, timestep=tt, encoder_hidden_states=text_embeddings
                 ).sample
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             if dds_embeds is not None:
                 with torch.autocast(device_type="cuda", dtype=self.precision_t):
-                    noise_pred_dds = self.unet(
+                    noise_pred_dds = self.transformer(
                         latent_model_input, tt, encoder_hidden_states=dds_embeds
                     ).sample
                     noise_pred_uncond_dds, noise_pred_text_dds = noise_pred_dds.chunk(2)
@@ -183,7 +183,7 @@ class CogVideo(nn.Module):
             latents = torch.randn(
                 (
                     text_embeddings.shape[0] // 2,
-                    self.unet.in_channels,
+                    self.transformer.in_channels,
                     num_frames,
                     height // 8,
                     width // 8,
@@ -198,7 +198,7 @@ class CogVideo(nn.Module):
                 latent_model_input = torch.cat([latents] * 2)
 
                 with torch.no_grad():
-                    noise_pred = self.unet(
+                    noise_pred = self.transformer(
                         latent_model_input, t, encoder_hidden_states=text_embeddings
                     )["sample"]
 
@@ -218,9 +218,9 @@ class CogVideo(nn.Module):
 
         batch_size, channels, num_frames, height, width = imgs.shape
 
-        imgs = imgs.permute(0, 2, 1, 3, 4).reshape(
-            batch_size * num_frames, channels, height, width
-        )
+        # imgs = imgs.permute(0, 2, 1, 3, 4).reshape(
+        #     batch_size * num_frames, channels, height, width
+        # )
         input_dtype = imgs.dtype
 
         if normalize:
@@ -229,19 +229,7 @@ class CogVideo(nn.Module):
         with torch.cuda.amp.autocast():
             posterior = self.vae.encode(imgs.to(self.precision_t)).latent_dist
             latents = posterior.sample() * self.vae.config.scaling_factor
-
-        latents = (
-            latents[None, :]
-            .reshape(
-                (
-                    batch_size,
-                    num_frames,
-                    -1,
-                )
-                + latents.shape[2:]
-            )
-            .permute(0, 2, 1, 3, 4)
-        )
+        latents = latents.permute(0,2,1,3,4)
         return latents.to(input_dtype)
 
     @torch.cuda.amp.autocast(enabled=True)

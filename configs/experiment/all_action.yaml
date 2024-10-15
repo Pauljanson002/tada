@@ -7,8 +7,7 @@ defaults:
 hydra:
   sweeper:
     params:
-      training.lr: 0.0005
-      action: walking
+      guidance.name: both_vc,both_zs,both_ms
 
 text: "man"
 action: "running"
@@ -26,7 +25,7 @@ training:
   normal_sds: false
   mean_sds: false
   regularize_coeff: 0.001
-  iters: 10000
+  iters: 10
   scheduler: "none"
   lr: 0.0005
   guidance_scale: 100
@@ -40,7 +39,7 @@ training:
   g2_coeff: 1.0
 model:
   video: true
-  num_frames: 8
+  num_frames: 2
   lock_tex: false
   lock_beta: true
   lock_pose: false
@@ -64,5 +63,5 @@ model:
   action: ${action}
 fp16: true
 guidance:
-  name: "both"
+  name: "zeroscope"
   loss_type: "standard"
