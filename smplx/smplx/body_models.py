@@ -1206,7 +1206,6 @@ class SMPLX(SMPLH):
                 'bi,ij->bj', [left_hand_pose, self.left_hand_components])
             right_hand_pose = torch.einsum(
                 'bi,ij->bj', [right_hand_pose, self.right_hand_components])
-
         full_pose = torch.cat([global_orient.reshape(-1, 1, 3),
                                body_pose.reshape(-1, self.NUM_BODY_JOINTS, 3),
                                jaw_pose.reshape(-1, 1, 3),

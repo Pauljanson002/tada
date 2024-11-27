@@ -129,7 +129,8 @@ class ZeroScope(nn.Module):
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         if self.global_time_step is None:
-            t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+            # t = torch.randint(self.min_step, self.max_step + 1, (latents.shape[0],), dtype=torch.long, device=self.device)
+            t = torch.randint(1, 100, (latents.shape[0],), dtype=torch.long, device=self.device)
         else:
             logger.debug(f"Using global time step: {self.global_time_step}")
             t = self.global_time_step
@@ -174,19 +175,21 @@ class ZeroScope(nn.Module):
 
         if False:
             with torch.no_grad():
-                grad_visual = self.decode_latents(grad)
+                grad_visual = self.decode_latents((latents-grad).detach())
                 grad_visual = grad_visual.cpu()[0].permute(1,2,3,0)
                 grad_visual = (grad_visual * 255).to(torch.uint8)
-                torchvision.io.write_video("grad_visual.mp4", grad_visual, 5)
-                breakpoint()
+                torchvision.io.write_video("grad_visual.mp4", grad_visual, 1)
 
         # TODO: Do we need gradient clipping ?
         # if grad clip
         # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
-        loss = 0.5 * F.mse_loss(latents, (latents - grad).detach(), reduction="sum") / latents.shape[0]
-
-        return loss
+        clean_sample = (latents - grad).detach()
+        loss = 0.5 * F.mse_loss(latents, clean_sample, reduction="sum") / latents.shape[0]
+        
+        clean_vid = self.decode_latents(clean_sample)[0].permute(1,2,3,0).cpu().numpy() * 255
+        torchvision.io.write_video("clean_vid.mp4", clean_vid, 1)
+        return loss,clean_vid
 
     # def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
     #                        save_guidance_path=None):

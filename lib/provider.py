@@ -552,6 +552,7 @@ class ViewDataset(torch.utils.data.Dataset):
             'poses': poses.squeeze(0),
             'intrinsics': torch.as_tensor(intrinsics, dtype=torch.float32, device=self.device),
             'dirkey': self.id_dir_map[dirs],
+            "projection": projection,
             # 'azimuth': phis,
             'camera_type': camera_type,
             'polar': delta_polar,

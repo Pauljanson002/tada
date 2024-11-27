@@ -15,7 +15,7 @@ actions = [
     "cartwheeling",
 ]
 
-gudiances_types = ["videocrafter", "zeroscope", "modelscope"]
+gudiances_types = ["videocrafter"]
 
 for guidance_type in gudiances_types:
     if guidance_type == "videocrafter":

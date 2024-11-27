@@ -29,6 +29,21 @@ import pickle
 import math
 import logging
 logger = logging.getLogger(__name__)
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2 import model_zoo
+
+# Load Detectron2 Keypoint R-CNN model (or use HRNet as shown previously)
+def load_keypoint_rcnn():
+    cfg = get_cfg()
+    cfg.merge_from_file(
+        model_zoo.get_config_file("COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml")
+    )
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7
+    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
+        "COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml"
+    )
+    return DefaultPredictor(cfg)
 
 
 def sinusoidal_embedding(dim,frame_limit):
@@ -464,7 +479,7 @@ class DLMesh(nn.Module):
             N = self.dense_lbs_weights.shape[0]
 
             self.simplify = self.opt.simplify
-
+            self.predictor = load_keypoint_rcnn()
             if self.simplify:
                 self.opt.pose_mlp = "displacement"
 
@@ -840,7 +855,7 @@ class DLMesh(nn.Module):
             )
             v_cano = output.v_posed[0]
             landmarks = output.joints[0, -68:, :]
-            joints = output.joints[0, :-68, :]
+            joints = output.joints[0]
             # re-mesh
             if not self.simplify:
                 v_cano_dense = subdivide_inorder(v_cano, self.smplx_faces[self.remesh_mask], self.uniques[0])
@@ -861,6 +876,7 @@ class DLMesh(nn.Module):
                 # # if not is_train:
                 # v_posed_dense = v_cano
                 v_posed_dense, center, scale = normalize_vert(v_posed_dense, return_cs=True)
+                joints_normalized = (joints - center) * scale
                 mesh = Mesh(v_posed_dense, self.faces_list[-1].int(), vt=self.vt, ft=self.ft)
                 # mesh = Mesh(
                 #     v_posed_dense,
@@ -893,7 +909,7 @@ class DLMesh(nn.Module):
         else:
             mesh = Mesh(base=self.mesh)
             mesh.set_albedo(self.raw_albedo)
-        return mesh, landmarks ,prediction,joints
+        return mesh, landmarks ,prediction,joints_normalized
 
     @torch.no_grad()
     def get_mesh_center_scale(self, phrase):
@@ -1058,6 +1074,7 @@ class DLMesh(nn.Module):
             smplx_joints_frame_list = []
             smplx_3d_joints_frame_list = []
             prediction_list = []
+            keypoints_list = []
             for i in range(frame_size):
                 pr_mesh, smplx_landmarks,prediction,smplx_joints = self.get_mesh(is_train=is_train,frame_id=i)
                 smplx_3d_joints_frame_list.append(smplx_joints)
@@ -1069,18 +1086,34 @@ class DLMesh(nn.Module):
                                             mlp_texture=self.mlp_texture, is_train=is_train)
                 rgb = rgb * alpha + (1 - alpha) * bg_color
                 normal = normal * alpha + (1 - alpha) * bg_color
-                smplx_joints = torch.bmm(F.pad(smplx_joints, pad=(0, 1), mode='constant', value=1.0).unsqueeze(0).expand(1,-1,-1),torch.transpose(mvp, 1, 2)).float()  # [B, N, 4]
+                rgb_np = rgb[0].detach().cpu().numpy()
+                try:
+                    pred_keypoints = self.predictor(rgb_np * 255)["instances"].pred_keypoints[0]
+                except:
+                    pred_keypoints = None
+                
+                joints_homo = F.pad(smplx_joints,pad=(0,1),mode="constant",value=1.0)
+                joints_clip = torch.bmm(
+                                joints_homo.unsqueeze(0),
+                                torch.transpose(mvp, 1, 2),
+                            ).float()
+                scal = joints_clip[...,3:].clamp(min=1e-6)
+                joints_ndc = joints_clip[..., :3] / scal
+                joints_2d = torch.zeros((joints_ndc.shape[1], 2)).cuda()
+                joints_2d[:, 0] = ((joints_ndc[0, :, 0] + 1.0) * h.cuda() * 0.5).clamp(0, h[0])
+                joints_2d[:, 1] = ((joints_ndc[0, :, 1] + 1.0) * w.cuda() * 0.5).clamp(0, w[0])
 
-                smplx_joints = smplx_joints[..., :2] / smplx_joints[..., 3:]
-                smplx_joints = smplx_joints * 0.5 + 0.5
+                
                 rgb_frame_list.append(rgb)
                 normal_frame_list.append(normal)
-                smplx_joints_frame_list.append(smplx_joints)
+                smplx_joints_frame_list.append(joints_2d)
                 prediction_list.append(prediction)
+                keypoints_list.append(pred_keypoints[:,:2])
             rgbt = torch.stack(rgb_frame_list,dim=0)
             normalt = torch.stack(normal_frame_list,dim=0)
             smplx_joints = torch.stack(smplx_joints_frame_list,dim=0)
             smplx_3d_joints = torch.stack(smplx_3d_joints_frame_list,dim=0)
+            keypoints = torch.stack(keypoints_list,dim=0)
             # torch.save(smplx_3d_joints,"smplx_3d_joints.pt")
             # torch.save(smplx_joints,f"smplx_joints_{self.count}.pt")
             # self.count+=1
@@ -1105,6 +1138,7 @@ class DLMesh(nn.Module):
                 "alpha_vid": alpha,
                 "normal_vid": normalt,
                 "smplx_joints_vid": smplx_joints,
+                "coco_keypoints": keypoints,
                 "smplx_3d_joints_vid": smplx_3d_joints,
                 "prediction": prediction
             }
@@ -1115,4 +1149,4 @@ class DLMesh(nn.Module):
                 "normal": normal,
                 "smplx_landmarks": smplx_landmarks,
                 "prediction": prediction
-            }#
+            }#()

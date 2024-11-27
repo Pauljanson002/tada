@@ -1029,7 +1029,7 @@ class DLMesh(nn.Module):
             )
             v_cano = output.v_posed[0]
             landmarks = output.joints[0, -68:, :]
-            joints = output.joints[0, :-68, :]
+            joints = output.joints
             # re-mesh
             if not self.simplify:
                 v_cano_dense = subdivide_inorder(
@@ -1347,15 +1347,8 @@ class DLMesh(nn.Module):
                 )
                 rgb = rgb * alpha + (1 - alpha) * bg_color
                 normal = normal * alpha + (1 - alpha) * bg_color
-                smplx_joints = torch.bmm(
-                    F.pad(smplx_joints, pad=(0, 1), mode="constant", value=1.0)
-                    .unsqueeze(0)
-                    .expand(1, -1, -1),
-                    torch.transpose(mvp, 1, 2),
-                ).float()  # [B, N, 4]
-
-                smplx_joints = smplx_joints[..., :2] / smplx_joints[..., 3:]
-                smplx_joints = smplx_joints * 0.5 + 0.5
+                
+                
                 rgb_frame_list.append(rgb)
                 normal_frame_list.append(normal)
                 smplx_joints_frame_list.append(smplx_joints)

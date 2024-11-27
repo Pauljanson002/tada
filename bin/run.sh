@@ -46,5 +46,5 @@
 #     training.use_3d_landmarks=False \
 #     model.pose_mlp="pose" \
 
-# CUDA_VISIBLE_DEVICES=0 python main.py +experiment=tmp
-CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun +experiment=all_action
+CUDA_VISIBLE_DEVICES=0 python -m apps.run +experiment=tmp
+# CUDA_VISIBLE_DEVICES=0 python -m apps.run --multirun +experiment=all_action

@@ -30,7 +30,67 @@ from lib.rotation_conversions import (
 )
 import wandb
 import logging
+from detectron2.engine import DefaultPredictor
+from detectron2.config import get_cfg
+from detectron2 import model_zoo
 
+# Load Detectron2 Keypoint R-CNN model (or use HRNet as shown previously)
+def load_keypoint_rcnn():
+    cfg = get_cfg()
+    cfg.merge_from_file(
+        model_zoo.get_config_file("COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml")
+    )
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7
+    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
+        "COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml"
+    )
+    return DefaultPredictor(cfg)
+
+
+# COCO Keypoint mapping
+COCO_KEYPOINTS = [
+    "nose",
+    "left_eye",
+    "right_eye",
+    "left_ear",
+    "right_ear",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_ankle",
+    "right_ankle",
+]
+
+# SMPLX to COCO joint mapping
+SMPLX_TO_COCO = {
+    "nose": 55,
+    "left_eye": 57,
+    "right_eye": 56,
+    "left_ear": 59,
+    "right_ear": 58,
+    "left_shoulder": 17,
+    "right_shoulder": 16,
+    "left_elbow": 19,
+    "right_elbow": 18,
+    "left_wrist": 21,
+    "right_wrist": 20,
+    "left_hip": 2,
+    "right_hip": 1,
+    "left_knee": 5,
+    "right_knee": 4,
+    "left_ankle": 8,
+    "right_ankle": 7,
+}
+
+# Create ordered list of SMPLX indices matching COCO order
+SMPLX_JOINT_IDS = [SMPLX_TO_COCO[name] for name in COCO_KEYPOINTS]
 
 class Trainer(object):
     def __init__(
@@ -103,7 +163,7 @@ class Trainer(object):
             self.model = torch.nn.parallel.DistributedDataParallel(
                 self.model, device_ids=[local_rank]
             )
-
+        self.predictor = load_keypoint_rcnn()
         # guide model
         self.guidance = guidance
         self.guidance_2 = guidance_2
@@ -120,7 +180,6 @@ class Trainer(object):
         self.running_body_pose = matrix_to_rotation_6d(
             axis_angle_to_matrix(self.running_body_pose.view(-1, 3))
         ).view(self.model.opt.num_frames, -1)
-
 
         self.text_embeds = None
         if self.guidance is not None:
@@ -381,16 +440,29 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                rand_frames = torch.randint(0, video_frames.shape[0], (2,))
-                loss = self.opt.g1_coeff * (
-                    1e-3
-                    * self.guidance.train_step(
+                rand_frames = torch.randint(0, video_frames.shape[0], (10,))
+                loss , clean_vid = self.guidance.train_step(
                         dir_text_z,
                         video_frames[rand_frames],
                         view_id=kwargs.get("view_id", 0),
                         guidance_scale=self.opt.guidance_scale,
-                    ).mean()
+                    )
+                loss = self.opt.g1_coeff * (
+                    1e-3
+                    * loss.mean()
                 )
+                clean_vid = clean_vid.astype(np.uint8)
+                kp_list = []
+                for i, frame in enumerate(clean_vid):
+                    kp = self.predictor(frame)["instances"].pred_keypoints[0]
+                    kp_list.append(kp[:, :2])
+
+                kp_list = torch.stack(kp_list)
+                joint_loss = torch.nn.functional.mse_loss(
+                    out["smplx_joints_vid"][:2, SMPLX_JOINT_IDS, :], kp_list
+                )
+                self.logger.info(f"Joint loss: {joint_loss.item()}")
+                joint_loss.backward(retain_graph=True)
                 loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
                 if self.guidance_2 is not None:
                     loss_2 = self.opt.g2_coeff * (
@@ -404,7 +476,7 @@ class Trainer(object):
                     )
                     loss_dict[f"individual_sds/{str(type(self.guidance_2))}"] = loss_2.item()
                     loss += loss_2
-                
+
                 loss_dict["rgb_sds"] = loss.item()
             elif self.opt.normal_sds:
                 loss = self.guidance.train_step(
