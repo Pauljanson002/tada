@@ -16,6 +16,7 @@ pip install transformers==4.35.2 diffusers==0.23.1 pyrender huggingface-hub==0.2
 pip install timm==0.9.12
 pip install git+https://github.com/facebookresearch/detectron2.git@9131ce0e5bc0c89904541bc0355d933ccd6acbfb
 pip install mediapipe==0.10.8 
+pip install wandb
 
 pip install -e human_body_prior
 pip install -e smplx
