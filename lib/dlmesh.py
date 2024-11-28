@@ -1100,8 +1100,13 @@ class DLMesh(nn.Module):
                 scal = joints_clip[...,3:].clamp(min=1e-6)
                 joints_ndc = joints_clip[..., :3] / scal
                 joints_2d = torch.zeros((joints_ndc.shape[1], 2)).cuda()
-                joints_2d[:, 0] = ((joints_ndc[0, :, 0] + 1.0) * h.cuda() * 0.5).clamp(0, h[0])
-                joints_2d[:, 1] = ((joints_ndc[0, :, 1] + 1.0) * w.cuda() * 0.5).clamp(0, w[0])
+                try:
+                    joints_2d[:, 0] = ((joints_ndc[0, :, 0] + 1.0) * h.cuda() * 0.5).clamp(0, h[0])
+                    joints_2d[:, 1] = ((joints_ndc[0, :, 1] + 1.0) * w.cuda() * 0.5).clamp(0, w[0])
+                except:
+                    joints_2d[:, 0] = ((joints_ndc[0, :, 0] + 1.0) * h * 0.5).clamp(0, h)
+                    joints_2d[:, 1] = ((joints_ndc[0, :, 1] + 1.0) * w * 0.5).clamp(0, w)
+                    
 
                 
                 rgb_frame_list.append(rgb)
