@@ -32,7 +32,7 @@ training:
   g2_coeff: 1.0
 model:
   video: true
-  num_frames: 10
+  num_frames: 24
   lock_tex: false
   lock_beta: true
   lock_pose: false
