@@ -1,6 +1,7 @@
 import glob
 import pickle
 import random
+import socket
 import tqdm
 import imageio
 import tensorboardX
@@ -440,13 +441,21 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                rand_frames = torch.randint(0, video_frames.shape[0], (10,))
-                loss , clean_vid = self.guidance.train_step(
-                        dir_text_z,
-                        video_frames[rand_frames],
-                        view_id=kwargs.get("view_id", 0),
-                        guidance_scale=self.opt.guidance_scale,
-                    )
+                if socket.gethostname() == "armor":
+                    rand_frames = torch.randint(0,video_frames.shape[0],(2,))
+                    loss , clean_vid = self.guidance.train_step(
+                            dir_text_z,
+                            video_frames[rand_frames],
+                            view_id=kwargs.get("view_id", 0),
+                            guidance_scale=self.opt.guidance_scale,
+                        )
+                else:
+                    loss , clean_vid = self.guidance.train_step(
+                            dir_text_z,
+                            video_frames,
+                            view_id=kwargs.get("view_id", 0),
+                            guidance_scale=self.opt.guidance_scale,
+                        )
                 loss = self.opt.g1_coeff * (
                     1e-3
                     * loss.mean()
