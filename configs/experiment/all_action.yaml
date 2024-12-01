@@ -2,13 +2,11 @@
 
 defaults:
   - _self_
-
-
 hydra:
   sweeper:
     params:
-      guidance.name: both_vc,both_zs,both_ms
-
+      guidance.name: zeroscope
+      training.use_joint_loss: true,false
 text: "man"
 action: "running"
 wandb_mode: "disabled"
@@ -25,7 +23,8 @@ training:
   normal_sds: false
   mean_sds: false
   regularize_coeff: 0.001
-  iters: 10
+  iters: 10000
+  use_joint_loss: false
   scheduler: "none"
   lr: 0.0005
   guidance_scale: 100
@@ -39,7 +38,7 @@ training:
   g2_coeff: 1.0
 model:
   video: true
-  num_frames: 2
+  num_frames: 24
   lock_tex: false
   lock_beta: true
   lock_pose: false
@@ -65,3 +64,5 @@ fp16: true
 guidance:
   name: "zeroscope"
   loss_type: "standard"
+  t_start: 0.10
+  t_end: 0.20

@@ -15,7 +15,7 @@ actions = [
     "cartwheeling",
 ]
 
-gudiances_types = ["videocrafter"]
+gudiances_types = ["zeroscope"]
 
 for guidance_type in gudiances_types:
     if guidance_type == "videocrafter":
@@ -45,10 +45,10 @@ for guidance_type in gudiances_types:
 
         for i in range(4):
             video_read = torchvision.io.read_video(
-                f"4d/reference_videos/{i}.mp4"
+                f"archive/4d/reference_videos/{i}.mp4"
             )[0]
             video_read = video_read.permute(0, 3, 1, 2).float() / 255
-            video_read = video_read[0].repeat(video_read.shape[0], 1, 1, 1)
+            video_read = video_read[0].repeat(24, 1, 1, 1)
             video_read = video_read.to("cuda")
             if use_latents:
                 video_read = guidance.encode_imgs(video_read.permute(1, 0, 2, 3)[None])
@@ -89,11 +89,11 @@ for guidance_type in gudiances_types:
                 dir_text_z = torch.stack(dir_text_z)
                 optimizer.zero_grad()
                 if not use_latents:
-                    loss = guidance.train_step(
+                    loss,clean_vid = guidance.train_step(
                         dir_text_z, videos_list[d].squeeze(0), 100, use_latents
                     )
                 else:
-                    loss = guidance.train_step(dir_text_z, videos_list[d], 100, use_latents)
+                    loss,clean_vid = guidance.train_step(dir_text_z, videos_list[d], 100, use_latents)
                 loss.backward()
                 optimizer.step()
 

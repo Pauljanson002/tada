@@ -228,12 +228,14 @@ class VideoCrafter(nn.Module):
         # if grad clip
         # grad = torch.clamp(grad, -self.grad_clip, self.grad_clip)
         # d(loss)/d(latents) = latents - target = latents - (latents - grad) = grad
+        
+        clean_sample = (latents - grad).detach()
         loss = (
             0.5
-            * F.mse_loss(latents, (latents - grad).detach(), reduction="sum")
+            * F.mse_loss(latents, clean_sample, reduction="sum")
             / latents.shape[0]
         )
-
+        clean_vid = self.decode_latents(clean_sample)[0].permute(1, 2, 3, 0).cpu().numpy() * 255
         return loss
 
     def encode_first_stage(self, x):
