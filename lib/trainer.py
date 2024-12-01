@@ -461,14 +461,18 @@ class Trainer(object):
                     * loss.mean()
                 )
                 clean_vid = clean_vid.astype(np.uint8)
+                smplx_joints = out["smplx_joints_vid"][:, SMPLX_JOINT_IDS, :]
                 kp_list = []
                 for i, frame in enumerate(clean_vid):
-                    kp = self.predictor(frame)["instances"].pred_keypoints[0]
+                    try:
+                        kp = self.predictor(frame)["instances"].pred_keypoints[0]
+                    except:
+                        kp = smplx_joints[i]
                     kp_list.append(kp[:, :2])
 
                 kp_list = torch.stack(kp_list)
                 joint_loss = torch.nn.functional.mse_loss(
-                    out["smplx_joints_vid"][:2, SMPLX_JOINT_IDS, :], kp_list
+                    smplx_joints, kp_list
                 )
                 self.logger.info(f"Joint loss: {joint_loss.item()}")
                 joint_loss.backward(retain_graph=True)
