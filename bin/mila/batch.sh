@@ -1,13 +1,16 @@
 #!/bin/bash
 #SBATCH --job-name=tada
-#SBATCH --output=~/scratch/slurm/%j.out
-#SBATCH --error=~/scratch/slurm/%j.err
+#SBATCH --output=/network/scratch/p/paul.janson/slurm/%j.out
+#SBATCH --error=/network/scratch/p/paul.janson/slurm/%j.err
 #SBATCH --ntasks=1
-#SBATCH --time=10:00
-#SBATCH --gres=gpu:a100l:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=64Gb
-#SBATCH --short-unkillable
+#SBATCH --time=2:59:00
+#SBATCH --gres=gpu:80gb:1
+##SBATCH --constraint=80gb
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=pauljanson002@gmail.com
+#SBATCH --mem=32G
+#SBATCH --partition=unkillable
 
 source bin/mila/setup.sh
 
