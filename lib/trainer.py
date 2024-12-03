@@ -1,6 +1,7 @@
 import glob
 import pickle
 import random
+import socket
 import tqdm
 import imageio
 import tensorboardX
@@ -447,12 +448,21 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                loss , clean_vid = self.guidance.train_step(
-                        dir_text_z,
-                        video_frames,
-                        view_id=kwargs.get("view_id", 0),
-                        guidance_scale=self.opt.guidance_scale,
-                    )
+                if socket.gethostname() == "armor":
+                    rand_frames = torch.randint(0,video_frames.shape[0],(2,))
+                    loss , clean_vid = self.guidance.train_step(
+                            dir_text_z,
+                            video_frames[rand_frames],
+                            view_id=kwargs.get("view_id", 0),
+                            guidance_scale=self.opt.guidance_scale,
+                        )
+                else:
+                    loss , clean_vid = self.guidance.train_step(
+                            dir_text_z,
+                            video_frames,
+                            view_id=kwargs.get("view_id", 0),
+                            guidance_scale=self.opt.guidance_scale,
+                        )
                 loss = self.opt.g1_coeff * (
                     1e-3
                     * loss.mean()
@@ -468,11 +478,12 @@ class Trainer(object):
                     kp_list.append(kp[:, :2])
 
                 kp_list = torch.stack(kp_list)
-                joint_loss = torch.nn.functional.mse_loss(
+                joint_loss = 1e-3 * torch.nn.functional.mse_loss(
                     smplx_joints, kp_list
                 )
                 self.logger.info(f"Joint loss: {joint_loss.item()}")
-                joint_loss.backward(retain_graph=True)
+                if self.opt.use_joint_loss:
+                    joint_loss.backward(retain_graph=True)
                 loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
                 if self.guidance_2 is not None:
                     loss_2 = self.opt.g2_coeff * (

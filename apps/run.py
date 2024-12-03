@@ -57,11 +57,11 @@ def main(cfg):
             from lib.guidance.modelscope import ModelScope
             # return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
             if opt.name == "both_vc":
-                return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), VideoCrafter(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+                return  VideoCrafter(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None),StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type)
             elif opt.name == "both_ms":
                 return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ModelScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
             elif opt.name == "both_zs":
-                return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
+                return ZeroScope(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None),StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type)
             elif opt.name == "both_cog":
                 from lib.guidance.cogvideo import CogVideo
                 return StableDiffusion(device, cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=opt.loss_type), CogVideo(device,cfg.fp16, opt.vram_O,t_range=[opt.t_start,opt.t_end],loss_type=None)
