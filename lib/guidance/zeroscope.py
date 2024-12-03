@@ -58,7 +58,7 @@ class ZeroScope(nn.Module):
         #     model_key = "runwayml/stable-diffusion-v1-5"
         # else:
         #     raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
-        if "SLURM_JOB_ID" in os.environ:
+        if "SLURM_JOB_ID" in os.environ and "ng" in os.environ["SLURMD_NODENAME"]:
             model_key = "cerspense/zeroscope_v2_576w"
             self.pipe = DiffusionPipeline.from_pretrained(model_key,torch_dtype=self.precision_t,local_files_only=True).to(self.device)
             self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler",torch_dtype=torch.float16,local_files_only=True)
