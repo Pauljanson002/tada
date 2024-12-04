@@ -441,7 +441,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                if socket.gethostname() == "armor":
+                if socket.gethostname() == "armor1":
                     rand_frames = torch.randint(0,video_frames.shape[0],(2,))
                     loss , clean_vid = self.guidance.train_step(
                             dir_text_z,

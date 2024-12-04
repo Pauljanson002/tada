@@ -114,7 +114,9 @@ class ZeroScope(nn.Module):
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         return text_embeddings
-
+    
+    # make this function to use no grad
+    @torch.no_grad()
     def train_step(self, text_embeddings, pred_rgbt, guidance_scale=100, rgb_as_latents=False,dds_embeds=None,**kwargs): # pred_rgbt: [F, 3, H, W]
         if rgb_as_latents:
             # latents = F.interpolate(pred_rgbt, (64, 64), mode='bilinear', align_corners=False)
@@ -188,7 +190,7 @@ class ZeroScope(nn.Module):
         loss = 0.5 * F.mse_loss(latents, clean_sample, reduction="sum") / latents.shape[0]
         
         clean_vid = self.decode_latents(clean_sample)[0].permute(1,2,3,0).cpu().numpy() * 255
-        torchvision.io.write_video("clean_vid.mp4", clean_vid, 10)
+        torchvision.io.write_video("clean_vid_{t}.mp4", clean_vid, 10)
         return loss,clean_vid
 
     # def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, as_latent=False, grad_scale=1,
@@ -373,6 +375,7 @@ class ZeroScope(nn.Module):
 
 
 if __name__ == '__main__':
+    
     import argparse
     import matplotlib.pyplot as plt
 
