@@ -34,14 +34,7 @@ import logging
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
-from util.signal_handling import signal_handler
 
-
-def siguser_handler(signum, frame):
-    """Handle termination signal from SLURM"""
-    print(f"\nReceived signal {signum}. Starting graceful shutdown...")
-    signal_handler.set_terminate()
-signal.signal(signal.SIGUSR1, siguser_handler)
 # Load Detectron2 Keypoint R-CNN model (or use HRNet as shown previously)
 def load_keypoint_rcnn():
     cfg = get_cfg()
