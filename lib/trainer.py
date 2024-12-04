@@ -34,7 +34,14 @@ import logging
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
+from util.signal_handling import signal_handler
 
+
+def siguser_handler(signum, frame):
+    """Handle termination signal from SLURM"""
+    print(f"\nReceived signal {signum}. Starting graceful shutdown...")
+    signal_handler.set_terminate()
+signal.signal(signal.SIGUSR1, siguser_handler)
 # Load Detectron2 Keypoint R-CNN model (or use HRNet as shown previously)
 def load_keypoint_rcnn():
     cfg = get_cfg()
@@ -817,6 +824,9 @@ class Trainer(object):
                     )
             if self.opt.debug:
                 break
+            if signal_handler.should_terminate():
+                print("performing graceful shutdown")
+                break
 
         end_t = time.time()
 
@@ -966,6 +976,10 @@ class Trainer(object):
             # if view_id in [0,2]:
             #     print(f"Skipping view {view_id}: {data['dirkey'][0]}")
             #     continue
+            
+            if signal_handler.should_terminate():
+                print("performing graceful shutdown")
+                break
 
             self.local_step += 1
             self.global_step += 1
