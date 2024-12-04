@@ -30,6 +30,7 @@ training:
   dds: false
   g1_coeff: 1.0
   g2_coeff: 1.0
+  use_joint_loss: false
 model:
   video: true
   num_frames: 24

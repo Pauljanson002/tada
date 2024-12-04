@@ -1075,7 +1075,7 @@ class DLMesh(nn.Module):
             smplx_3d_joints_frame_list = []
             prediction_list = []
             keypoints_list = []
-            for i in range(frame_size):
+            for i in range(frame_size): #! This can be batched for speedup
                 pr_mesh, smplx_landmarks,prediction,smplx_joints = self.get_mesh(is_train=is_train,frame_id=i)
                 smplx_3d_joints_frame_list.append(smplx_joints)
                 if self.add_fake_movement:

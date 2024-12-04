@@ -173,7 +173,6 @@ def main(cfg):
 
         trainer.train(train_loader, valid_loader, max_epoch)
 
-        # test
         test_loader = build_dataloader('test')
         trainer.test(test_loader)
         if cfg.save_mesh:
