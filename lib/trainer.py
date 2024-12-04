@@ -474,8 +474,9 @@ class Trainer(object):
                 joint_loss = 1e-3 * torch.nn.functional.mse_loss(
                     smplx_joints, kp_list
                 )
-                self.logger.info(f"Joint loss: {joint_loss.item()}")
+                
                 if self.opt.use_joint_loss:
+                    self.logger.info(f"Joint loss: {joint_loss.item()}")
                     joint_loss.backward(retain_graph=True)
                 loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
                 if self.guidance_2 is not None:

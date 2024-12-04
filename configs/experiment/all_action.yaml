@@ -66,3 +66,4 @@ guidance:
   loss_type: "standard"
   t_start: 0.10
   t_end: 0.20
+seed: 2
