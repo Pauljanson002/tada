@@ -4,7 +4,7 @@ from lib.guidance.zeroscope import ZeroScope
 from lib.guidance.video_crafter import VideoCrafter
 from lib.guidance.modelscope import ModelScope
 from lib.guidance.sd import StableDiffusion
-
+from lib.guidance.wan import Wan
 
 
 
@@ -12,14 +12,17 @@ import torchvision
 
 
 actions = [
-    "cartwheeling",
+    "running",
 ]
 
-gudiances_types = ["zeroscope"]
+gudiances_types = ["wan"]
 
 for guidance_type in gudiances_types:
     if guidance_type == "videocrafter":
         guidance = VideoCrafter("cuda", True, False, t_range=[0.02, 0.98])
+    elif guidance_type == "wan":
+        guidance = Wan("cuda", True, False)
+        exit(0)
     elif guidance_type == "zeroscope":
         guidance = ZeroScope("cuda", True, False)
     elif guidance_type == "modelscope":
@@ -89,11 +92,11 @@ for guidance_type in gudiances_types:
                 dir_text_z = torch.stack(dir_text_z)
                 optimizer.zero_grad()
                 if not use_latents:
-                    loss,clean_vid = guidance.train_step(
+                    loss = guidance.train_step(
                         dir_text_z, videos_list[d].squeeze(0), 100, use_latents
                     )
                 else:
-                    loss,clean_vid = guidance.train_step(dir_text_z, videos_list[d], 100, use_latents)
+                    loss = guidance.train_step(dir_text_z, videos_list[d], 100, use_latents)
                 loss.backward()
                 optimizer.step()
 

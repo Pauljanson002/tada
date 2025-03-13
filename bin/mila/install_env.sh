@@ -14,14 +14,17 @@ pip install pymeshlab
 pip install tensorboardX rich torch_ema
 pip install transformers==4.35.2 diffusers==0.23.1 pyrender huggingface-hub==0.24.6
 pip install timm==0.9.12
-pip install git+https://github.com/facebookresearch/detectron2.git@9131ce0e5bc0c89904541bc0355d933ccd6acbfb
+# pip install git+https://github.com/facebookresearch/detectron2.git@9131ce0e5bc0c89904541bc0355d933ccd6acbfb
 pip install mediapipe==0.10.8 
 pip install wandb
 
-pip install -e human_body_prior
+# pip install -e human_body_prior
 pip install -e smplx
 pip install loguru
 pip install ninja
 pip install av==11.0.0
 pip install accelerate
-pip install wandb
+# pip install wandb
+pip install einops
+
+# python -m pip install git+https://github.com/Dao-AILab/flash-attention.git@v2.5.9.post1
