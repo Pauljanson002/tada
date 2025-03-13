@@ -34,14 +34,7 @@ import logging
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
-from util.signal_handling import signal_handler
 
-
-def siguser_handler(signum, frame):
-    """Handle termination signal from SLURM"""
-    print(f"\nReceived signal {signum}. Starting graceful shutdown...")
-    signal_handler.set_terminate()
-signal.signal(signal.SIGUSR1, siguser_handler)
 # Load Detectron2 Keypoint R-CNN model (or use HRNet as shown previously)
 def load_keypoint_rcnn():
     cfg = get_cfg()
@@ -448,7 +441,7 @@ class Trainer(object):
             pred = video_frames_np
 
             if self.opt.rgb_sds:
-                if socket.gethostname() == "armor":
+                if socket.gethostname() == "armor1":
                     rand_frames = torch.randint(0,video_frames.shape[0],(2,))
                     loss , clean_vid = self.guidance.train_step(
                             dir_text_z,
@@ -481,8 +474,9 @@ class Trainer(object):
                 joint_loss = 1e-3 * torch.nn.functional.mse_loss(
                     smplx_joints, kp_list
                 )
-                self.logger.info(f"Joint loss: {joint_loss.item()}")
+                
                 if self.opt.use_joint_loss:
+                    self.logger.info(f"Joint loss: {joint_loss.item()}")
                     joint_loss.backward(retain_graph=True)
                 loss_dict[f"individual_sds/{str(type(self.guidance))}"] = loss.item()
                 if self.guidance_2 is not None:
@@ -824,9 +818,7 @@ class Trainer(object):
                     )
             if self.opt.debug:
                 break
-            if signal_handler.should_terminate():
-                print("performing graceful shutdown")
-                break
+
 
         end_t = time.time()
 
@@ -976,10 +968,6 @@ class Trainer(object):
             # if view_id in [0,2]:
             #     print(f"Skipping view {view_id}: {data['dirkey'][0]}")
             #     continue
-            
-            if signal_handler.should_terminate():
-                print("performing graceful shutdown")
-                break
 
             self.local_step += 1
             self.global_step += 1
